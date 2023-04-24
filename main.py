@@ -1,13 +1,14 @@
+import os.path
 import sys
 import h5py
 import numpy as np
 import pandas as pd
 from PIL import Image
 from IPython import embed
-from PyQt6.QtWidgets import QMessageBox, QFileDialog, QMainWindow, QListWidgetItem, QApplication, QInputDialog, QWidget, \
-    QMdiSubWindow, QTextEdit, QAbstractItemView
-from PyQt6.QtGui import QKeySequence, QAction, QStandardItemModel, QStandardItem
-from PyQt6.QtCore import Qt, QSortFilterProxyModel, QModelIndex
+from PyQt6.QtWidgets import QMessageBox, QFileDialog, QMainWindow, QApplication, QInputDialog, QAbstractItemView,\
+    QLineEdit, QPushButton, QColorDialog, QGraphicsColorizeEffect, QLabel
+from PyQt6.QtGui import QKeySequence, QAction, QStandardItemModel, QStandardItem, QColor
+from PyQt6.QtCore import Qt, QSortFilterProxyModel, QModelIndex, pyqtSignal
 # from zipfile import ZipFile
 # from read_roi import read_roi_zip
 from layout.main_layout import Ui_MainWindow
@@ -32,6 +33,60 @@ pg.setConfigOption('foreground', pg.mkColor('k'))
 pg.setConfigOption('useOpenGL', True)
 pg.setConfigOption('antialias', True)
 pg.setConfigOption('imageAxisOrder', 'row-major')
+
+
+class ColorButton(QPushButton):
+    '''
+    Custom Qt Widget to show a chosen color.
+
+    Left-clicking the button shows the color-chooser, while
+    right-clicking resets the color to None (no-color).
+    '''
+
+    colorChanged = pyqtSignal(object)
+
+    def __init__(self, *args, color=None, **kwargs):
+        super(ColorButton, self).__init__(*args, **kwargs)
+
+        self._color = None
+        self._default = color
+        self.pressed.connect(self.onColorPicker)
+
+        # Set the initial/default state.
+        self.setColor(self._default)
+
+    def setColor(self, color):
+        if color != self._color:
+            self._color = color
+            self.colorChanged.emit(color)
+
+        if self._color:
+            self.setStyleSheet("background-color: %s;" % self._color)
+        else:
+            self.setStyleSheet("")
+
+    def color(self):
+        return self._color
+
+    def onColorPicker(self):
+        '''
+        Show color-picker dialog to select color.
+
+        Qt will use the native dialog by default.
+
+        '''
+        dlg = QColorDialog(self)
+        if self._color:
+            dlg.setCurrentColor(QColor(self._color))
+
+        if dlg.exec():
+            self.setColor(dlg.currentColor().name())
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.RightButton:
+            self.setColor(self._default)
+
+        return super(ColorButton, self).mousePressEvent(e)
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -93,13 +148,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.reference_image = []
         self.tiff_recording = []
 
+        # Plotting Settings
+        self.data_trace_color = pg.mkColor('k')
+
         # set active tab for start up
         self.images_tabWidget.setCurrentIndex(0)
         # self.images_tabWidget.setCurrentWidget(self.images_tabWidget.findChild(QWidget, 'reference_tab'))
 
         # Create a Figure Item
         # self.figure_item = pg.PlotDataItem()
-        self.roi_list.selectionModel().selectionChanged.connect(self.plot_all_data)
+        self.roi_list.selectionModel().selectionChanged.connect(self.update_plot_data_traces)
 
         self.reference_graphicsView.ui.histogram.hide()
         self.reference_graphicsView.ui.roiBtn.hide()
@@ -113,6 +171,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.data_traces_remove_button.clicked.connect(lambda: self.remove_item(self.data_traces_list))
         self.roi_list_toggle_button.clicked.connect(self.toggle_roi)
 
+        # self.data_constant_add_button.clicked.connect(self.color_picker)
         # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         # Contex Menus
         self.create_context_menu(self.data_traces_list)
@@ -138,6 +197,39 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # self.roi_list.doubleClicked.connect(self.item_selection_has_changed)
         # self.data_traces_list.installEventFilter(self)
         # self.data_constant_list.installEventFilter(self)
+
+    def color_picker(self):
+        # opening color dialog
+        color = QColorDialog.getColor()
+
+        # creating label to display the color
+        label = QLabel(self)
+
+        # setting geometry to the label
+        label.setGeometry(100, 100, 200, 60)
+
+        # making label multi line
+        label.setWordWrap(True)
+
+        # setting stylesheet of the label
+        label.setStyleSheet("QLabel"
+                            "{"
+                            "border : 5px solid black;"
+                            "}")
+
+        # setting text to the label
+        label.setText(str(color))
+
+        # setting graphic effect to the label
+        graphic = QGraphicsColorizeEffect(self)
+
+        # setting color to the graphic
+        graphic.setColor(color)
+
+        # setting graphic to the label
+        label.setGraphicsEffect(graphic)
+        print(color)
+        return color
 
     def get_active_item(self, ls):
         item_index = ls.currentIndex()
@@ -190,7 +282,30 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.data_rois_model.sort(0, Qt.SortOrder.AscendingOrder)
         self.data_disabled_rois_model.sort(0, Qt.SortOrder.AscendingOrder)
 
-    def plot_all_data(self):
+    def set_data_trace_color(self, master):
+        color = self.color_picker()
+        item_index = master.currentIndex()
+        data_set_name = item_index.data()
+
+        # get plot item
+        plot_item = self.data_graphicsView.getPlotItem()
+
+        # get plot data items (a list of all individual data traces)
+        plot_data_items = plot_item.items
+
+        # Get data names
+        plot_data_items_names = [s.name() for s in plot_data_items]
+
+        # Find corresponding index
+        idx = np.where(np.array(plot_data_items_names) == data_set_name)[0][0]
+
+        # get the corresponding plot data item
+        current_plot_data_item = plot_data_items[idx]
+
+        # Set new color to this plot data item
+        current_plot_data_item.setPen(color)
+
+    def update_plot_data_traces(self):
         # Remove all items in the Plot
         self.data_graphicsView.clear()
 
@@ -198,12 +313,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item = self.data_rois_model.item(self.roi_list.currentIndex().row())
 
         # Get Data from item
-        for key_name in item.data():
+        for k, key_name in enumerate(item.data()):
+            # Get Metadata of this data set
+            # data_trace_item = self.data_names_model.item(k)
             y = item.data()[key_name]
             x = np.arange(0, len(y), 1)
             item_name = item.text()
             # Create a PlotDataItem
-            figure_item = pg.PlotDataItem(x=x, y=y, pen='k')
+            trace_color = item
+            figure_item = pg.PlotDataItem(x=x, y=y, pen=self.data_trace_color, name=key_name)
             # Add it
             self.data_graphicsView.addItem(figure_item)
 
@@ -247,8 +365,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     self.data_rois_model.setItem(k, roi_item)
 
                 # Attach the dataset names to the list (based on the last ROI ...)
-                for i in hdf5_file['ROIS'][row]:
-                    item_data_name = QStandardItem(i)
+                for data_set_name in hdf5_file['ROIS'][row]:
+                    item_data_name = QStandardItem(data_set_name)
+                    # at some meta data (like trace color)
+                    meta_data = {'trace_color': pg.mkColor('k'), 'name': data_set_name}
+                    item_data_name.setData(meta_data)
                     self.data_names_model.appendRow(item_data_name)
             # Sort Model Items
             # self.data_rois_model.sort(0, Qt.SortOrder.DescendingOrder)
@@ -260,13 +381,31 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         with h5py.File(f'{self.temp_dir}temp_data.hdf5', 'w') as hdf5_file:
             grp_rois = hdf5_file.create_group('ROIS')
 
+    def pop_up_msg_window(self, title, msg_text):
+        w = QMessageBox.critical(self, title, msg_text)
+        # w.setWindowTitle('ERROR')
+        # w.setText(msg_text)
+        # w.setStandardButtons(QMessageBox.StandardButton.Ok)
+        # button = w.exec()
+        #
+        # if button == QMessageBox.StandardButton.Ok:
+        #     print('OK')
+
     def import_csv_file(self):
         # Open file dialog
         file_dir = self.get_a_file_dir('csv file (*.csv)')
         if file_dir:
-            # Ask for a name
-            data_set_name, ok_pressed = QInputDialog.getText(self, "New name", "New name:")
-            if not ok_pressed:
+            # Ask for a data name (use file name as default)
+            file_name = os.path.split(file_dir)[1]
+            text, ok_pressed = QInputDialog.getText(
+                self, "Enter Data Name", "data name:", QLineEdit.EchoMode.Normal, file_name[:-4])
+            if ok_pressed and text:
+                data_set_name = text
+            elif not text:
+                print('ERROR: Please enter a valid data name!')
+                self.pop_up_msg_window(msg_text='Please enter a valid data name')
+                return
+            else:
                 return
             csv_file = pd.read_csv(file_dir)
             csv_file_entries_count = len(list(csv_file.keys()))
@@ -286,12 +425,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                         roi_name = self.rename_roi(k+1, self.count_chars(csv_file_entries_count))
                         grp = hdf5_file.create_group(f'ROIS/{roi_name}')
                         dset = hdf5_file.create_dataset(f'ROIS/{roi_name}/{data_set_name}', data=data_trace)
+                        # add meta data (attributes) to this data set
+                        dset.attrs.create(name='trace_color', data='black')
                     # Access data:
                     # d = hdf5_file['ROIS']['1']['new_trace'][:]
                     # Get csv file out of memory
                     csv_file = None
                     del csv_file
-
                 # Update Data Model
                 self.update_data_model_from_hd5_file()
             else:
@@ -309,25 +449,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                                 # key corresponds to ROI
                                 # roi_name = f'ROI_{k}'
                                 roi_name = self.rename_roi(k+1, self.count_chars(csv_file_entries_count))
-                                hdf5_file.create_dataset(f'ROIS/{roi_name}/{data_set_name}', data=data_trace)
+                                dset = hdf5_file.create_dataset(f'ROIS/{roi_name}/{data_set_name}', data=data_trace)
+                                # add meta data (attributes) to this data set
+                                dset.attrs.create(name='trace_color', data='black')
                         # Update Data Model
                         self.update_data_model_from_hd5_file()
                     except FileNotFoundError:
+                        self.pop_up_msg_window(title='ERROR', msg_text='File not found!')
                         print('No File')
                 else:
                     print('ERROR: ROIS NUMBER DOES NOT MATH OTHER DATA')
-
+                    self.pop_up_msg_window(title='ERROR', msg_text='Number of ROIs does not match the other data!')
         else:
             print('Canceled')
 
-    def change_data_traces_list(self, action):
-        if action == 'remove':
-            # remove item from data traces list
-            self.remove_item(self.data_traces_list)
-            # remove data set
-
-            # check if there are still data sets available
-            size = self.data_traces_list.size()
 
     def open_tiff_recording(self):
         file_dir = self.get_a_file_dir('Recording file (*.tiff, *.tif)')
@@ -398,29 +533,32 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         action_new = QAction('New', master)
         action_rename = QAction('Rename', master)
         action_remove = QAction('Remove', master)
-        master.addAction(action_remove)
-        master.addActions([action_new, action_rename, action_remove])
+        action_change_color = QAction('Color', master)
+        # master.addAction(action_remove)
+        master.addActions([action_new, action_rename, action_remove, action_change_color])
 
         action_new.triggered.connect(self.import_csv_file)
         action_rename.triggered.connect(lambda: self.rename_item(master))
         action_remove.triggered.connect(lambda: self.remove_item(master))
+        action_change_color.triggered.connect(lambda: self.set_data_trace_color(master))
 
     def remove_item(self, master):
         item_index = master.currentIndex()
-        item_name = item_index.data()
-        print(f'Delete: {item_name} data set')
-        with h5py.File(f'{self.temp_dir}temp_data.hdf5', 'a') as hdf5_file:
-            # Delete Dataset in hdf5 file for each ROI
-            for k, roi in enumerate(hdf5_file['ROIS']):
-                del hdf5_file['ROIS'][roi][item_name]
-            # Get data set count (based on the last ROI)
-            data_set_count = len(list(hdf5_file['ROIS'][roi].keys()))
-        # if this was the last data set than also remove all rois
-        if data_set_count == 0:
-            self.restart_session()
-        else:
-            # Update Models
-            self.update_data_model_from_hd5_file()
+        if item_index.isValid():
+            item_name = item_index.data()
+            print(f'Delete: {item_name} data set')
+            with h5py.File(f'{self.temp_dir}temp_data.hdf5', 'a') as hdf5_file:
+                # Delete Dataset in hdf5 file for each ROI
+                for k, roi in enumerate(hdf5_file['ROIS']):
+                    del hdf5_file['ROIS'][roi][item_name]
+                # Get data set count (based on the last ROI)
+                data_set_count = len(list(hdf5_file['ROIS'][roi].keys()))
+            # if this was the last data set than also remove all rois
+            if data_set_count == 0:
+                self.restart_session()
+            else:
+                # Update Models
+                self.update_data_model_from_hd5_file()
 
     def rename_item(self, master):
         # Rename a selected item in a list widget (via a popup menu)

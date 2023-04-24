@@ -4,10 +4,13 @@
 
 # ignore ALL files in ANY directory
 temp
+backup
+.backup
 .temp 
 .idea
 __pycache__
 
+backup/
 temp/ 
 .idea/
 __pycache__/
