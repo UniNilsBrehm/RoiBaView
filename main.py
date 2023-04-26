@@ -1,19 +1,24 @@
 import os.path
 import sys
+import traceback
 import h5py
 import numpy as np
 import pandas as pd
 from PIL import Image
+from cv2 import imreadmulti as read_tiff
 from IPython import embed
 from PyQt6.QtWidgets import QMessageBox, QFileDialog, QMainWindow, QApplication, QInputDialog, QAbstractItemView,\
-    QLineEdit, QPushButton, QColorDialog, QGraphicsColorizeEffect, QLabel, QWidget
-from PyQt6.QtGui import QKeySequence, QAction, QStandardItemModel, QStandardItem, QColor
-from PyQt6.QtCore import Qt, QSortFilterProxyModel, QModelIndex, pyqtSignal
+    QLineEdit, QPushButton, QColorDialog,  QSplashScreen, QLabel, QWidget, QDialog, QGridLayout
+from PyQt6.QtGui import QKeySequence, QAction, QStandardItemModel, QStandardItem, QColor, QPixmap
+from PyQt6.QtCore import Qt, QSortFilterProxyModel, QModelIndex, pyqtSignal, QTimer, QThread, QObject, QRunnable, \
+    pyqtSlot, QThreadPool
 # from zipfile import ZipFile
 # from read_roi import read_roi_zip
 from layout.main_layout import Ui_MainWindow
 import pyqtgraph as pg
 from dataclasses import dataclass
+import psutil
+import time
 
 # ToDo:
 #  - Convert ImageJ ROIs to pyqtgraph ROIs
@@ -24,7 +29,7 @@ from dataclasses import dataclass
 #       * Get ROIs from Imagej Roi Zip File --> Show ROIs on Reference Image
 #       * Get ROIs from pyqtgraph manual ROI drawing  --> Show ROIs on Reference Image
 
-# pyuic6 data_viewer_main_layout_v2.ui -o data_viewer_main_layout_v2.py
+# pyuic6 main_layout.ui -o main_layout.py
 # print(pg.systemInfo())
 
 # Global pyqtgraph settings
@@ -33,6 +38,106 @@ pg.setConfigOption('foreground', pg.mkColor('k'))
 pg.setConfigOption('useOpenGL', True)
 pg.setConfigOption('antialias', True)
 pg.setConfigOption('imageAxisOrder', 'row-major')
+
+
+# class Worker(QRunnable):
+#     # Worker Thread
+#     @pyqtSlot()
+#     def run(self):
+#         # What you want to do in this thread
+#         print('Thread Started')
+#         for k in range(10):
+#             time.sleep(1)
+#             print(k)
+#
+#         print('Thread Complete')
+
+class WorkerSignals(QObject):
+    '''
+    Defines the signals available from a running worker thread.
+
+    Supported signals are:
+
+    finished
+        No data
+
+    error
+        tuple (exctype, value, traceback.format_exc() )
+
+    result
+        object data returned from processing, anything
+
+    progress
+        int indicating % progress
+
+    '''
+    finished = pyqtSignal()
+    error = pyqtSignal(tuple)
+    result = pyqtSignal(object)
+    progress = pyqtSignal(int)
+
+
+class Worker(QRunnable):
+    '''
+    Worker thread
+
+    Inherits from QRunnable to handler worker thread setup, signals and wrap-up.
+
+    :param callback: The function callback to run on this worker thread. Supplied args and
+                     kwargs will be passed through to the runner.
+    :type callback: function
+    :param args: Arguments to pass to the callback function
+    :param kwargs: Keywords to pass to the callback function
+
+    '''
+
+    def __init__(self, fn, *args, **kwargs):
+        super(Worker, self).__init__()
+
+        # Store constructor arguments (re-used for processing)
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+        self.signals = WorkerSignals()
+
+        # Add the callback to our kwargs
+        self.kwargs['progress_callback'] = self.signals.progress
+
+    @pyqtSlot()
+    def run(self):
+        '''
+        Initialise the runner function with passed args, kwargs.
+        '''
+
+        # Retrieve args/kwargs here; and fire processing using them
+        try:
+            result = self.fn(*self.args, **self.kwargs)
+        except:
+            traceback.print_exc()
+            exctype, value = sys.exc_info()[:2]
+            self.signals.error.emit((exctype, value, traceback.format_exc()))
+        else:
+            self.signals.result.emit(result)  # Return the result of the processing
+        finally:
+            self.signals.finished.emit()  # Done
+
+
+class InfoDialog(QDialog):
+    def __init__(self, info_text, parent=None):
+        super(InfoDialog, self).__init__(parent)
+
+        self.info_text = info_text
+        self.label = QLabel()
+        layout = QGridLayout()
+        layout.addWidget(self.label)
+
+        layout = QGridLayout(self)
+        # label = QLabel(info_text)
+        label = QLabel('LOADING :::::::::::')
+        button = QPushButton('Click Me')
+        layout.addWidget(label)
+        layout.addWidget(button)
+        self.setLayout(layout)
 
 
 class ColorPicker(QColorDialog):
@@ -53,6 +158,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.setupUi(self)
         # Fill Screen
         self.showMaximized()
+
+        self.sweep_count = 0
+
+        self.loading_screen = QSplashScreen(QPixmap('layout/loading_screen.jpg'))
+
+        # Multi-Threading
+        self.threadpool = QThreadPool()
+        print("Multithreading with maximum %d threads" % self.threadpool.maxThreadCount())
 
         # Plotting Style
         self.plotting_style = PlottingStyle()
@@ -154,6 +267,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # self.data_traces_list.installEventFilter(self)
         # self.data_constant_list.installEventFilter(self)
 
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # Tiff Recording Section
+        self.recording_comboBox.currentIndexChanged.connect(self.update_tiff_recording_view)
+        self.recording_comboBox.activated.connect(self.update_tiff_recording_view)
+
     # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     # Data Management Methods
     # ------------------------------------------------------------------------------------------------------------------
@@ -166,6 +284,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             grp_data_traces = hdf5_file.create_group('data_traces')
             grp_stimulation = hdf5_file.create_group('stimulation')
             grp_rois = hdf5_file.create_group('rois')
+            grp_sweeps = hdf5_file.create_group('sweeps')
 
     def set_new_entry_to_hdf5_file(self, csv_file, data_set_name):
         with h5py.File(f'{self.temp_dir}temp_data.hdf5', 'a') as hdf5_file:
@@ -191,7 +310,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def import_csv_file(self):
         # Open file dialog
-        file_dir = self.get_a_file_dir('csv file (*.csv)')
+        file_dir = self.get_a_file_dir(file_format='csv file (*.csv)', default_dir='E:/CaImagingAnalysis/Shagnik/Analysis/')
         if file_dir:
             # Ask for a data name (use file name as default)
             file_name = os.path.split(file_dir)[1]
@@ -270,6 +389,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
                     for i, item_name in enumerate(roi_names):
                         item = QStandardItem(item_name)
+                        item.setData(i)
                         self.roi_view_model.setItem(i, item)
             # Sort Model Items
             # self.data_rois_model.sort(0, Qt.SortOrder.DescendingOrder)
@@ -293,7 +413,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item_name = item.text()
 
         # Convert Item Name to Column Number
-        col_index = int(item_name)
+        # col_index = int(item_name)
+        # print(col_index)
+        # Get Roi Item data that contains the data column index
+        col_index = item.data()
 
         # Loop over all data traces and index the corresponding roi data
         for k in range(self.data_traces_model.rowCount()):
@@ -387,6 +510,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def pop_up_msg_window(self, title, msg_text):
         w = QMessageBox.critical(self, title, msg_text)
+
         # w.setWindowTitle('ERROR')
         # w.setText(msg_text)
         # w.setStandardButtons(QMessageBox.StandardButton.Ok)
@@ -395,11 +519,98 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # if button == QMessageBox.StandardButton.Ok:
         #     print('OK')
 
+    def add_tiff_recording_to_hdf5_file(self, sweep_name, tiff_array):
+        with h5py.File(f'{self.temp_dir}temp_data.hdf5', 'a') as hdf5_file:
+            # Create new directory for this sweep in the file
+            try:
+                grp = hdf5_file.create_group(f'sweeps/{sweep_name}')
+            except ValueError:
+                self.pop_up_msg_window(title='ERROR', msg_text='Sweep Name Already Exists!')
+                return
+            # Create data set containing the tiff array
+            tiff_values = hdf5_file.create_dataset(f'sweeps/{sweep_name}/tiff_recording', data=tiff_array)
+            tiff_values.attrs.create(name='sweep', data=sweep_name)
+
+    def print_memory_usage(self):
+        mem_usage_mbs = psutil.Process().memory_info().rss / (1024 * 1024)
+        print('+++')
+        print(f'Memory Usage: {mem_usage_mbs} MB')
+        print('+++')
+
+    def flashSplash(self):
+        self.splash = QSplashScreen(QPixmap('layout/loading_screen.jpg'))
+
+        # By default, SplashScreen will be in the center of the screen.
+        # You can move it to a specific location if you want:
+        # self.splash.move(10,10)
+
+        self.splash.show()
+
+        # Close SplashScreen after 2 seconds (2000 ms)
+        QTimer.singleShot(2000, self.splash.close)
+
+    def execute_this_fn(self, progress_callback):
+        for n in range(0, 5):
+            time.sleep(1)
+            progress_callback.emit(n*100/4)
+
+        return "Done."
+
+    def print_output(self, s):
+        print(s)
+
+    def thread_complete(self):
+        print("THREAD COMPLETE!")
+
+    def progress_fn(self, n):
+        print(f'{n} done')
+
     def open_tiff_recording(self):
-        file_dir = self.get_a_file_dir('Recording file (*.tiff, *.tif)')
-        img = Image.open(file_dir)
-        self.tiff_recording = np.array(img)
-        self.recording_graphicsView.setImage(self.tiff_recording)
+        # Pass the function to execute
+        worker = Worker(self.execute_this_fn) # Any other args, kwargs are passed to the run function
+        worker.signals.result.connect(self.print_output)
+        worker.signals.finished.connect(self.thread_complete)
+        worker.signals.progress.connect(self.progress_fn)
+
+        # Execute
+        self.threadpool.start(worker)
+
+        # file_dir = self.get_a_file_dir(file_format='Recording file (*.tiff, *.tif)',
+        #                                default_dir='E:/CaImagingAnalysis/habituation/20220601/06_07/tiffs/')
+        # # Use opencv imreadmulti() to read the tiff file
+        # tiff_file = read_tiff(file_dir)
+        # tiff_array = np.array(tiff_file[1])
+        # # Insert tiff array into hdf5 file
+        # self.sweep_count += 1
+        # sweep_name = f'sweep_{self.sweep_count}'
+        # self.add_tiff_recording_to_hdf5_file(sweep_name=sweep_name, tiff_array=tiff_array)
+        #
+        # # Add an entry to the recording combobox
+        # self.recording_comboBox.addItem(sweep_name)
+
+    def update_tiff_recording_view(self):
+        self.print_memory_usage()
+        self.loading_screen.show()
+        # Get the combobox entry
+        combo_item_index = self.recording_comboBox.currentIndex()
+        sweep_name = f'sweep_{combo_item_index+1}'
+        # Get the tiff array from the hdf5 file into memory
+        try:
+            with h5py.File(f'{self.temp_dir}temp_data.hdf5', 'a') as hdf5_file:
+                tiff_array = hdf5_file['sweeps'][sweep_name]['tiff_recording'][()]
+
+        except KeyError:
+            print('Could not find tiff array in hdf5')
+            return
+
+        # Clear View
+        self.recording_graphicsView.clear()
+
+        # Add new tiff data
+        self.recording_graphicsView.setImage(tiff_array)
+        print('Updated Tiff Recording View')
+        self.print_memory_usage()
+        self.loading_screen.close()
 
     def create_circle_roi(self, pos, size):
         circle = pg.CircleROI(
@@ -417,7 +628,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         roi.pen = pg.mkPen('b', width=2)
 
     def open_image(self):
-        file_dir = self.get_a_file_dir('Image file (*.tiff, *.tif)')
+        file_dir = self.get_a_file_dir(file_format='Image file (*.tiff, *.tif)',
+                                       default_dir='E:/CaImagingAnalysis/Shagnik/Analysis/')
         img = Image.open(file_dir)
         self.reference_image = np.array(img)
         self.reference_graphicsView.setImage(self.reference_image)
@@ -510,8 +722,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     # Change the Name in the hdf5 file as well
                     self.rename_hdf5_data_set(old_name=old_name, new_name=text)
 
-    def get_a_file_dir(self, file_format):
-        default_dir = 'E:/CaImagingAnalysis/Shagnik/Analysis/'
+    def get_a_file_dir(self, default_dir, file_format):
+        # default_dir = 'E:/CaImagingAnalysis/Shagnik/Analysis/'
         file_dir = QFileDialog.getOpenFileName(self, 'Open File', default_dir, file_format)[0]
         return file_dir
 

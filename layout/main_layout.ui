@@ -164,13 +164,7 @@
            <widget class="ImageView" name="reference_graphicsView"/>
           </item>
           <item row="0" column="1">
-           <widget class="QComboBox" name="sweeps_comboBox">
-            <item>
-             <property name="text">
-              <string>Sweep_01</string>
-             </property>
-            </item>
-           </widget>
+           <widget class="QComboBox" name="reference_comboBox"/>
           </item>
          </layout>
         </widget>
@@ -180,14 +174,10 @@
          </attribute>
          <layout class="QGridLayout" name="gridLayout_6">
           <item row="0" column="0">
-           <widget class="ImageView" name="recording_graphicsView">
-            <property name="minimumSize">
-             <size>
-              <width>300</width>
-              <height>300</height>
-             </size>
-            </property>
-           </widget>
+           <widget class="QComboBox" name="recording_comboBox"/>
+          </item>
+          <item row="1" column="0">
+           <widget class="ImageView" name="recording_graphicsView"/>
           </item>
          </layout>
         </widget>
