@@ -16,7 +16,7 @@
   <widget class="QWidget" name="centralwidget">
    <layout class="QGridLayout" name="gridLayout_4">
     <item row="0" column="0">
-     <layout class="QGridLayout" name="gridLayout_3" columnstretch="20,75,5">
+     <layout class="QGridLayout" name="gridLayout_3" columnstretch="20,0,0">
       <property name="leftMargin">
        <number>10</number>
       </property>
@@ -32,20 +32,6 @@
       <property name="spacing">
        <number>10</number>
       </property>
-      <item row="0" column="0">
-       <layout class="QVBoxLayout" name="verticalLayout">
-        <item>
-         <widget class="QLabel" name="label_5">
-          <property name="text">
-           <string>Information</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QTextBrowser" name="textBrowser"/>
-        </item>
-       </layout>
-      </item>
       <item row="0" column="2">
        <layout class="QGridLayout" name="gridLayout">
         <property name="leftMargin">
@@ -91,6 +77,16 @@
          <widget class="QListView" name="roi_list"/>
         </item>
        </layout>
+      </item>
+      <item row="1" column="0" colspan="2">
+       <widget class="PlotWidget" name="data_graphicsView">
+        <property name="minimumSize">
+         <size>
+          <width>500</width>
+          <height>256</height>
+         </size>
+        </property>
+       </widget>
       </item>
       <item row="1" column="2">
        <layout class="QGridLayout" name="gridLayout_2">
@@ -144,6 +140,20 @@
         </item>
        </layout>
       </item>
+      <item row="0" column="0">
+       <layout class="QVBoxLayout" name="verticalLayout">
+        <item>
+         <widget class="QLabel" name="label_5">
+          <property name="text">
+           <string>Information</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTextBrowser" name="textBrowser"/>
+        </item>
+       </layout>
+      </item>
       <item row="0" column="1">
        <widget class="QTabWidget" name="images_tabWidget">
         <property name="minimumSize">
@@ -177,14 +187,14 @@
            <widget class="QComboBox" name="recording_comboBox"/>
           </item>
           <item row="1" column="0">
-           <widget class="ImageView" name="recording_graphicsView"/>
+           <widget class="GraphicsLayoutWidget" name="recording_graphicsView"/>
           </item>
           <item row="1" column="1">
            <widget class="QPushButton" name="compute_reference_pushButton">
             <property name="maximumSize">
              <size>
-              <width>40</width>
-              <height>30</height>
+              <width>30</width>
+              <height>20</height>
              </size>
             </property>
             <property name="text">
@@ -194,16 +204,6 @@
           </item>
          </layout>
         </widget>
-       </widget>
-      </item>
-      <item row="1" column="0" colspan="2">
-       <widget class="PlotWidget" name="data_graphicsView">
-        <property name="minimumSize">
-         <size>
-          <width>500</width>
-          <height>256</height>
-         </size>
-        </property>
        </widget>
       </item>
      </layout>
@@ -260,6 +260,11 @@
   </customwidget>
   <customwidget>
    <class>ImageView</class>
+   <extends>QGraphicsView</extends>
+   <header>pyqtgraph</header>
+  </customwidget>
+  <customwidget>
+   <class>GraphicsLayoutWidget</class>
    <extends>QGraphicsView</extends>
    <header>pyqtgraph</header>
   </customwidget>

@@ -2,7 +2,11 @@
 *.log
 *.idea
 
+# Ignore all files starting with a dot
+.*
+
 # ignore ALL files in ANY directory
+test*
 temp
 backup
 .backup

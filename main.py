@@ -1,11 +1,14 @@
 import os.path
 import sys
 import traceback
+import logging
 import h5py
 import numpy as np
 import pandas as pd
+from multiprocessing import Process, cpu_count
 from PIL import Image
 from cv2 import imreadmulti as read_tiff
+import cv2
 from IPython import embed
 from PyQt6.QtWidgets import QMessageBox, QFileDialog, QMainWindow, QApplication, QInputDialog, QAbstractItemView,\
     QLineEdit, QPushButton, QColorDialog,  QSplashScreen, QLabel, QWidget, QDialog, QGridLayout
@@ -19,6 +22,7 @@ import pyqtgraph as pg
 from dataclasses import dataclass
 import psutil
 import time
+import tifffile
 
 # ToDo:
 #  - Convert ImageJ ROIs to pyqtgraph ROIs
@@ -31,6 +35,7 @@ import time
 
 # pyuic6 main_layout.ui -o main_layout.py
 # print(pg.systemInfo())
+# python -m pyqtgraph.examples
 
 # Global pyqtgraph settings
 pg.setConfigOption('background', pg.mkColor('w'))
@@ -39,105 +44,195 @@ pg.setConfigOption('useOpenGL', True)
 pg.setConfigOption('antialias', True)
 pg.setConfigOption('imageAxisOrder', 'row-major')
 
-
-# class Worker(QRunnable):
-#     # Worker Thread
-#     @pyqtSlot()
-#     def run(self):
-#         # What you want to do in this thread
-#         print('Thread Started')
-#         for k in range(10):
-#             time.sleep(1)
-#             print(k)
-#
-#         print('Thread Complete')
-
-class WorkerSignals(QObject):
-    '''
-    Defines the signals available from a running worker thread.
-
-    Supported signals are:
-
-    finished
-        No data
-
-    error
-        tuple (exctype, value, traceback.format_exc() )
-
-    result
-        object data returned from processing, anything
-
-    progress
-        int indicating % progress
-
-    '''
-    finished = pyqtSignal()
-    error = pyqtSignal(tuple)
-    result = pyqtSignal(object)
-    progress = pyqtSignal(int)
+TEMP_HDF5_FILE_DIR = 'temp/temp_data.hdf5'
+logging.basicConfig(format="%(message)s", level=logging.INFO)
 
 
-class Worker(QRunnable):
-    '''
-    Worker thread
+class DataHandlingHDF5(Process):
+    """
+    Takes care of all data handling.
+    """
+    def __init__(self, data_set_name='', group_name='', data_set='', action=''):
+        """
+        Constructs all the necessary attributes.
 
-    Inherits from QRunnable to handler worker thread setup, signals and wrap-up.
+        Parameters
+        ----------
+            data_set_name : str
+                name of the data set that will be stored ord edited
+            group_name : str
+                group key to the data set
+            data_set: array
+                data to store in the file
+                corresponding metadata (will be stored in the hdf5 attributes of the data set)
+        """
+        # execute the base constructor
+        Process.__init__(self)
+        self.data_set = data_set
+        self.action = action
+        self.data_set_name = data_set_name
+        self.group_name = group_name
+        self.temp_hdf5_file_dir = 'temp/temp_data.hdf5'
+        self.start_up_file_groups = ['data_traces', 'stimulation', 'rois', 'sweeps']
 
-    :param callback: The function callback to run on this worker thread. Supplied args and
-                     kwargs will be passed through to the runner.
-    :type callback: function
-    :param args: Arguments to pass to the callback function
-    :param kwargs: Keywords to pass to the callback function
+    def initialize_start_up_file(self):
+        """
+        Creates a new hdf5 file and adds group names to the root.
+        Group names are specified in: self.start_up_file_groups
 
-    '''
+        ATTENTION: This function will overwrite any existing files in the temp directory!
+        """
+        logging.info('INITIALIZING HDF5 FILE')
+        with h5py.File(self.temp_hdf5_file_dir, 'w') as hdf5_file:
+            for grp_name in self.start_up_file_groups:
+                hdf5_file.create_group(grp_name)
 
-    def __init__(self, fn, *args, **kwargs):
-        super(Worker, self).__init__()
+    def add_data_set(self):
+        """ Adds a new data set to the hdf5 file """
+        with h5py.File(self.temp_hdf5_file_dir, 'a') as hdf5_file:
+            # check if a data set with this name is already there
+            if f'{self.group_name}/{self.data_set_name}' in hdf5_file:
+                logging.info('ERROR: Data name already exists')
+            else:
+                # Create data set containing the tiff array
+                tiff_values = hdf5_file.create_dataset(f'{self.group_name}/{self.data_set_name}', data=self.data_set)
+                # tiff_values.attrs.create(self.meta_data)
+                logging.info(f'data set "{self.data_set_name}" created!')
 
-        # Store constructor arguments (re-used for processing)
-        self.fn = fn
-        self.args = args
-        self.kwargs = kwargs
-        self.signals = WorkerSignals()
+    def delete_data_set(self):
+        """ Delete a data set in the hdf5 file """
+        with h5py.File(self.temp_hdf5_file_dir, 'a') as hdf5_file:
+            if f'{self.group_name}/{self.data_set_name}' in hdf5_file:
+                del hdf5_file[f'{self.group_name}/{self.data_set_name}']
+                logging.info(f'data set "{self.data_set_name}" deleted!')
+            else:
+                logging.info(f'ERROR: Could not find data set with this name: "{self.data_set_name}"')
 
-        # Add the callback to our kwargs
-        self.kwargs['progress_callback'] = self.signals.progress
+    def show_data_set(self):
+        """ List all data sets contained in a group"""
+        with h5py.File(self.temp_hdf5_file_dir, 'a') as hdf5_file:
+            if f'{self.group_name}/' in hdf5_file:
+                data = hdf5_file[self.group_name]
+                for data_name in data:
+                    logging.info(f'Found data set: {data_name}')
+            else:
+                logging.info(f'Could not find: {self.group_name}')
 
-    @pyqtSlot()
-    def run(self):
-        '''
-        Initialise the runner function with passed args, kwargs.
-        '''
-
-        # Retrieve args/kwargs here; and fire processing using them
-        try:
-            result = self.fn(*self.args, **self.kwargs)
-        except:
-            traceback.print_exc()
-            exctype, value = sys.exc_info()[:2]
-            self.signals.error.emit((exctype, value, traceback.format_exc()))
+    # override run function of the Process Class
+    # here is all the stuff that should be done in the new process
+    def run(self) -> None:
+        if self.action == 'show':
+            logging.info('SHOWING DATA')
+            self.show_data_set()
+        elif self.action == 'add':
+            self.add_data_set()
         else:
-            self.signals.result.emit(result)  # Return the result of the processing
-        finally:
-            self.signals.finished.emit()  # Done
+            logging.info('Wrong Action')
 
 
-class InfoDialog(QDialog):
-    def __init__(self, info_text, parent=None):
-        super(InfoDialog, self).__init__(parent)
+class StartNewProcess(Process):
+    # This class takes care of starting a new process (on another cpu)
+    # It inherits from the "Process" Class so everytime it is created it will start a new Process
+    # Initializing a new process takes some time and makes the thread unresponsive. Therefore, we created a new thread
+    # for this beforehand.
 
-        self.info_text = info_text
-        self.label = QLabel()
-        layout = QGridLayout()
-        layout.addWidget(self.label)
+    # override the constructor
+    def __init__(self, task_class_method):
+        # execute the base constructor
+        Process.__init__(self)
+        self.task_class_method = task_class_method
 
-        layout = QGridLayout(self)
-        # label = QLabel(info_text)
-        label = QLabel('LOADING :::::::::::')
-        button = QPushButton('Click Me')
-        layout.addWidget(label)
-        layout.addWidget(button)
-        self.setLayout(layout)
+    # override run function of the Process Class
+    # here is all the stuff that should be done in the new process
+    def run(self):
+        start_task = self.task_class_method
+
+
+class DataHandling(Process):
+    # This class takes care of starting a new process (on another cpu)
+    # It inherits from the "Process" Class so everytime it is created it will start a new Process
+    # Initializing a new process takes some time and makes the thread unresponsive. Therefore, we created a new thread
+    # for this beforehand.
+
+    # override the constructor
+    def __init__(self, file_dir):
+        # execute the base constructor
+        Process.__init__(self)
+        self.file_dir = file_dir
+        self.file_name = os.path.split(self.file_dir)[1][:-4]
+
+    def open_tiff(self):
+        logging.info('')
+        logging.info('Starting to load tiff file ...')
+        tiff_file = read_tiff(self.file_dir)
+        tiff_array = np.array(tiff_file[1])
+        logging.info('... tiff file loaded')
+        logging.info('')
+        return tiff_array
+
+    def delete_entry(self):
+        with h5py.File(TEMP_HDF5_FILE_DIR, 'a') as hdf5_file:
+            if f'test/{self.file_name}' in hdf5_file:
+                del hdf5_file[f'test/{self.file_name}']
+                logging.info(f'data set "{self.file_name}" deleted!')
+            else:
+                logging.info(f'ERROR: Could not find data set with this name: "{self.file_name}"')
+
+    def store_tiff(self):
+        with h5py.File(TEMP_HDF5_FILE_DIR, 'a') as hdf5_file:
+            # check how many sweeps are already there
+            sweeps = hdf5_file['sweeps']
+            if f'test/{self.file_name}' in hdf5_file:
+                logging.info('ERROR: Data name already exists')
+            else:
+                tiff_array = self.open_tiff()
+                # Create data set containing the tiff array
+                tiff_values = hdf5_file.create_dataset(f'test/{self.file_name}', data=tiff_array)
+                tiff_values.attrs.create(name='sweep', data='test')
+                logging.info(f'data set "{self.file_name}" created!')
+
+    @staticmethod
+    def show_data():
+        with h5py.File(TEMP_HDF5_FILE_DIR, 'r') as hdf5_file:
+            data = hdf5_file['test']
+            for data_name in data:
+                logging.info(f'Found data set: {data_name}')
+
+    # override run function of the Process Class
+    # here is all the stuff that should be done in the new process
+    def run(self):
+        self.store_tiff()
+        # self.delete_entry()
+        # self.show_data()
+        # logging.info('ERROR: WRONG INPUT')
+
+
+class WorkerForNewProcess(QObject):
+    # This class (QObject) will be used when opening a new thread
+    # We need to open a new thread before starting a new process, because initializing the process takes some time and
+    # would freeze the main app
+
+    finished = pyqtSignal()
+    progress = pyqtSignal(str)
+
+    def __init__(self, process_class):
+        QObject.__init__(self)
+        self.process_class = process_class
+
+    def multi_cpu(self):
+        # check if there are enough cpus available on this machine
+        cpus = cpu_count()
+        print(f'Found {cpus} logical cores')
+        if cpus >= 2:
+            # process = DataHandling()
+            process = self.process_class
+            # process = DataHandling(value='delete')
+            self.progress.emit('starting multi process')
+            process.start()
+            print('STARTING NEW PROCESS')
+            process.join()
+            self.progress.emit('finished multi process')
+            self.finished.emit()
 
 
 class ColorPicker(QColorDialog):
@@ -160,12 +255,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.showMaximized()
 
         self.sweep_count = 0
-
-        self.loading_screen = QSplashScreen(QPixmap('layout/loading_screen.jpg'))
-
-        # Multi-Threading
-        self.threadpool = QThreadPool()
-        print("Multithreading with maximum %d threads" % self.threadpool.maxThreadCount())
+        self.thread = QThread()
 
         # Plotting Style
         self.plotting_style = PlottingStyle()
@@ -211,8 +301,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # self.roi_list.dropEvent.connect(self.drop_item)
 
         # Initialize stuff
-        self.temp_dir = 'temp/'
-        self.initialize_hdf5_start_up_file()
+        # self.temp_dir = 'temp/'
+        # self.initialize_hdf5_start_up_file()
+        self.session_count = 0
+        hdf5 = DataHandlingHDF5()
+        hdf5.initialize_start_up_file()
 
         # self.active_item = None
         self.active_item_index = QModelIndex()
@@ -249,7 +342,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         # MENU ACTIONS
         # Import Tiff Recording
-        self.actionOpen_Tiff_Recording.triggered.connect(self.open_tiff_recording)
+        self.actionOpen_Tiff_Recording.triggered.connect(self._open_tiff_recording)
 
         # Import Data
         self.actionMenuImport.triggered.connect(self.import_csv_file)
@@ -271,6 +364,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Tiff Recording Section
         self.recording_comboBox.currentIndexChanged.connect(self.update_tiff_recording_view)
         self.recording_comboBox.activated.connect(self.update_tiff_recording_view)
+        self.compute_reference_pushButton.clicked.connect(self.compute_reference_image_from_tiff_recording)
 
     # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     # Data Management Methods
@@ -280,14 +374,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         print('Name Changed')
 
     def initialize_hdf5_start_up_file(self):
-        with h5py.File(f'{self.temp_dir}temp_data.hdf5', 'w') as hdf5_file:
+        with h5py.File(TEMP_HDF5_FILE_DIR, 'w') as hdf5_file:
             grp_data_traces = hdf5_file.create_group('data_traces')
             grp_stimulation = hdf5_file.create_group('stimulation')
             grp_rois = hdf5_file.create_group('rois')
             grp_sweeps = hdf5_file.create_group('sweeps')
 
     def set_new_entry_to_hdf5_file(self, csv_file, data_set_name):
-        with h5py.File(f'{self.temp_dir}temp_data.hdf5', 'a') as hdf5_file:
+        with h5py.File(TEMP_HDF5_FILE_DIR, 'a') as hdf5_file:
             # Create new directory in the file
             try:
                 grp = hdf5_file.create_group(f'data_traces/{data_set_name}')
@@ -361,7 +455,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def update_data_model_from_hd5_file(self):
         # Check if hdf5 file exists
         try:
-            with h5py.File(f'{self.temp_dir}temp_data.hdf5', 'r') as hdf5_file:
+            with h5py.File(TEMP_HDF5_FILE_DIR, 'r') as hdf5_file:
                 # Clear Item Models
                 self.data_traces_model.clear()
                 self.roi_view_model.clear()
@@ -402,7 +496,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # Get selected roi item index from the roi list view
         item_index = self.roi_list.currentIndex()
-
+        if not item_index.isValid():
+            print('no more item to plot')
+            return
         # get the item from the roi view model via the index
         item = self.roi_view_model.itemFromIndex(item_index)
 
@@ -461,11 +557,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def toggle_roi(self):
         item_index = self.active_item_index
+        print(item_index)
         item_model = item_index.model()
-        if not item_model.item(item_index.row()):
+        if not item_model:
             print('Non valid item')
             return
         total_item_count = item_model.rowCount()
+        if total_item_count == 0:
+            print('No Item in Model')
+            return
+
         # Copy Item
         item_copy = item_model.item(item_index.row()).clone()
         # Remove it from the Model
@@ -520,7 +621,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         #     print('OK')
 
     def add_tiff_recording_to_hdf5_file(self, sweep_name, tiff_array):
-        with h5py.File(f'{self.temp_dir}temp_data.hdf5', 'a') as hdf5_file:
+        with h5py.File(TEMP_HDF5_FILE_DIR, 'a') as hdf5_file:
             # Create new directory for this sweep in the file
             try:
                 grp = hdf5_file.create_group(f'sweeps/{sweep_name}')
@@ -537,80 +638,113 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         print(f'Memory Usage: {mem_usage_mbs} MB')
         print('+++')
 
-    def flashSplash(self):
-        self.splash = QSplashScreen(QPixmap('layout/loading_screen.jpg'))
+    def report_progress(self, n):
+        # self.info_label.setText(f"Long-Running Step: {n}")
+        logging.info(f'Step: {n} ')
 
-        # By default, SplashScreen will be in the center of the screen.
-        # You can move it to a specific location if you want:
-        # self.splash.move(10,10)
+    def _worker_handling_multi_cpu(self):
+        # Move worker to the thread
+        self.worker.moveToThread(self.thread)
+        # Connect signals and slots
+        self.thread.started.connect(self.worker.multi_cpu)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        # self.thread.finished.connect(self.thread.deleteLater)
+        self.worker.progress.connect(self.report_progress)
 
-        self.splash.show()
+        # Start the thread
+        self.thread.start()
 
-        # Close SplashScreen after 2 seconds (2000 ms)
-        QTimer.singleShot(2000, self.splash.close)
+    def _open_tiff_recording(self):
+        # Check if there is already a thread running
+        # Step 2: Create a QThread object
+        if self.thread.isRunning():
+            logging.info('Thread is still running ...')
+        else:
+            # Open up data browser
+            file_dir = self.get_a_file_dir(default_dir='E:/CaImagingAnalysis/Shagnik/Analysis/test/', file_format='tiff, (*.tiff, *.tif)')
+            # Use opencv imreadmulti() to read the tiff file
+            # tiff_file = read_tiff(file_dir, flags=cv2.IMREAD_ANYDEPTH)
+            # tiff_file = read_tiff(file_dir, flags=cv2.IMREAD_UNCHANGED)
+            # tiff_array = np.array(tiff_file[1])
+            tiff_array = tifffile.imread(file_dir)
+            # a = np.reshape(tiff_array, tiff_array.shape[0] * tiff_array.shape[1] * tiff_array.shape[2])
+            self.sweep_count += 1
+            sweep_name = f'sweep_{self.sweep_count}'
+            self.thread = QThread()
+            # Step 3: Create a worker object
+            self.worker = WorkerForNewProcess(
+                DataHandlingHDF5(
+                    data_set_name='tiff_recording',
+                    group_name=f'sweeps/{sweep_name}',
+                    data_set=tiff_array,
+                    action='add'
+                )
+            )
 
-    def execute_this_fn(self, progress_callback):
-        for n in range(0, 5):
-            time.sleep(1)
-            progress_callback.emit(n*100/4)
+            self._worker_handling_multi_cpu()
 
-        return "Done."
+            sweep_name = f'sweep_{self.sweep_count}'
+            # self.add_tiff_recording_to_hdf5_file(sweep_name=sweep_name, tiff_array=tiff_array)
 
-    def print_output(self, s):
-        print(s)
+            # Add an entry to the recording combobox
+            self.recording_comboBox.addItem(sweep_name)
 
-    def thread_complete(self):
-        print("THREAD COMPLETE!")
-
-    def progress_fn(self, n):
-        print(f'{n} done')
-
-    def open_tiff_recording(self):
-        # Pass the function to execute
-        worker = Worker(self.execute_this_fn) # Any other args, kwargs are passed to the run function
-        worker.signals.result.connect(self.print_output)
-        worker.signals.finished.connect(self.thread_complete)
-        worker.signals.progress.connect(self.progress_fn)
-
-        # Execute
-        self.threadpool.start(worker)
-
-        # file_dir = self.get_a_file_dir(file_format='Recording file (*.tiff, *.tif)',
-        #                                default_dir='E:/CaImagingAnalysis/habituation/20220601/06_07/tiffs/')
-        # # Use opencv imreadmulti() to read the tiff file
-        # tiff_file = read_tiff(file_dir)
-        # tiff_array = np.array(tiff_file[1])
-        # # Insert tiff array into hdf5 file
-        # self.sweep_count += 1
-        # sweep_name = f'sweep_{self.sweep_count}'
-        # self.add_tiff_recording_to_hdf5_file(sweep_name=sweep_name, tiff_array=tiff_array)
-        #
-        # # Add an entry to the recording combobox
-        # self.recording_comboBox.addItem(sweep_name)
-
-    def update_tiff_recording_view(self):
-        self.print_memory_usage()
-        self.loading_screen.show()
-        # Get the combobox entry
+    def compute_reference_image_from_tiff_recording(self):
+        # Get tiff recording data
         combo_item_index = self.recording_comboBox.currentIndex()
         sweep_name = f'sweep_{combo_item_index+1}'
-        # Get the tiff array from the hdf5 file into memory
+        tiff_array = self.get_tiff_from_hdf5(sweep_name)
+
+        # Compute STD Projection
+        std_projection = np.std(tiff_array, axis=0)
+
+        # Store it to hdf5 file
+
+        self.reference_image = std_projection
+        self.reference_graphicsView.setImage(self.reference_image)
+
+    def update_reference_view(self):
+        pass
+
+    def get_tiff_from_hdf5(self, sweep_name):
         try:
-            with h5py.File(f'{self.temp_dir}temp_data.hdf5', 'a') as hdf5_file:
+            with h5py.File(TEMP_HDF5_FILE_DIR, 'a') as hdf5_file:
                 tiff_array = hdf5_file['sweeps'][sweep_name]['tiff_recording'][()]
 
         except KeyError:
             print('Could not find tiff array in hdf5')
-            return
+            return None
+        return tiff_array
 
-        # Clear View
-        self.recording_graphicsView.clear()
-
-        # Add new tiff data
-        self.recording_graphicsView.setImage(tiff_array)
-        print('Updated Tiff Recording View')
+    def update_tiff_recording_view(self):
         self.print_memory_usage()
-        self.loading_screen.close()
+        # Get the combobox entry
+        combo_item_index = self.recording_comboBox.currentIndex()
+        sweep_name = f'sweep_{combo_item_index+1}'
+        # Get the tiff array from the hdf5 file into memory
+        tiff_array = self.get_tiff_from_hdf5(sweep_name)
+        if tiff_array is not None:
+            # Clear View
+            self.recording_graphicsView.clear()
+            self.recording_graphicsView.ui.roiBtn.hide()
+            self.recording_graphicsView.ui.menuBtn.hide()
+
+            self.recording_graphicsView.discreteTimeLine = True
+            value_range = tiff_array.max() - tiff_array.min()
+            min_value = int(value_range * 0.50)
+            max_value = int(value_range * 0.60)
+            print(f'min: {min_value}')
+            print(f'max: {max_value}')
+
+            # Add new tiff data to ImageView
+            self.recording_graphicsView.setImage(tiff_array)
+            self.recording_graphicsView.setLevels(min_value, max_value)
+            # histogram = self.recording_graphicsView.getHistogramWidget()
+            # self.recording_graphicsView.autoLevels()
+
+            print('Updated Tiff Recording View')
+            self.print_memory_usage()
 
     def create_circle_roi(self, pos, size):
         circle = pg.CircleROI(

@@ -101,6 +101,10 @@ class Ui_MainWindow(object):
         self.recording_graphicsView = ImageView(parent=self.recording_tab)
         self.recording_graphicsView.setObjectName("recording_graphicsView")
         self.gridLayout_6.addWidget(self.recording_graphicsView, 1, 0, 1, 1)
+        self.compute_reference_pushButton = QtWidgets.QPushButton(parent=self.recording_tab)
+        self.compute_reference_pushButton.setMaximumSize(QtCore.QSize(40, 30))
+        self.compute_reference_pushButton.setObjectName("compute_reference_pushButton")
+        self.gridLayout_6.addWidget(self.compute_reference_pushButton, 1, 1, 1, 1)
         self.images_tabWidget.addTab(self.recording_tab, "")
         self.gridLayout_3.addWidget(self.images_tabWidget, 0, 1, 1, 1)
         self.data_graphicsView = PlotWidget(parent=self.centralwidget)
@@ -136,7 +140,7 @@ class Ui_MainWindow(object):
         self.menubar.addAction(self.menuFile.menuAction())
 
         self.retranslateUi(MainWindow)
-        self.images_tabWidget.setCurrentIndex(0)
+        self.images_tabWidget.setCurrentIndex(1)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
     def retranslateUi(self, MainWindow):
@@ -153,6 +157,7 @@ class Ui_MainWindow(object):
         self.data_constant_add_button.setText(_translate("MainWindow", "+"))
         self.data_constant_remove_button.setText(_translate("MainWindow", "-"))
         self.images_tabWidget.setTabText(self.images_tabWidget.indexOf(self.reference_tab), _translate("MainWindow", "Reference"))
+        self.compute_reference_pushButton.setText(_translate("MainWindow", "Ref"))
         self.images_tabWidget.setTabText(self.images_tabWidget.indexOf(self.recording_tab), _translate("MainWindow", "Recording"))
         self.menuFile.setTitle(_translate("MainWindow", "File"))
         self.actionMenuExit.setText(_translate("MainWindow", "Exit"))
