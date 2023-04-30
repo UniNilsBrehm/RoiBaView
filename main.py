@@ -5,7 +5,7 @@ import logging
 import h5py
 import numpy as np
 import pandas as pd
-from multiprocessing import Process, cpu_count
+from threading import Thread
 from PIL import Image
 from cv2 import imreadmulti as read_tiff
 import cv2
@@ -48,32 +48,29 @@ TEMP_HDF5_FILE_DIR = 'temp/temp_data.hdf5'
 logging.basicConfig(format="%(message)s", level=logging.INFO)
 
 
-class DataHandlingHDF5(Process):
+class NewThread(Thread):
+    # override the constructor
+    def __init__(self, func):
+        # execute the base constructor
+        Thread.__init__(self)
+        # store the value
+        self.func = func
+
+    # override the run function
+    def run(self):
+        print(f'This is coming from another thread')
+        self.func()
+
+
+class DataHandlingHDF5(Thread):
     """
     Takes care of all data handling.
     """
-    def __init__(self, data_set_name='', group_name='', data_set='', action=''):
-        """
-        Constructs all the necessary attributes.
-
-        Parameters
-        ----------
-            data_set_name : str
-                name of the data set that will be stored ord edited
-            group_name : str
-                group key to the data set
-            data_set: array
-                data to store in the file
-                corresponding metadata (will be stored in the hdf5 attributes of the data set)
-        """
-        # execute the base constructor
-        Process.__init__(self)
-        self.data_set = data_set
-        self.action = action
-        self.data_set_name = data_set_name
-        self.group_name = group_name
+    def __init__(self):
+        Thread.__init__(self)
         self.temp_hdf5_file_dir = 'temp/temp_data.hdf5'
         self.start_up_file_groups = ['data_traces', 'stimulation', 'rois', 'sweeps']
+        # Start a new thread
 
     def initialize_start_up_file(self):
         """
@@ -87,36 +84,36 @@ class DataHandlingHDF5(Process):
             for grp_name in self.start_up_file_groups:
                 hdf5_file.create_group(grp_name)
 
-    def add_data_set(self):
+    def add_data_set(self, group_name, data_set_name, data_set):
         """ Adds a new data set to the hdf5 file """
         with h5py.File(self.temp_hdf5_file_dir, 'a') as hdf5_file:
             # check if a data set with this name is already there
-            if f'{self.group_name}/{self.data_set_name}' in hdf5_file:
+            if f'{group_name}/{data_set_name}' in hdf5_file:
                 logging.info('ERROR: Data name already exists')
             else:
                 # Create data set containing the tiff array
-                tiff_values = hdf5_file.create_dataset(f'{self.group_name}/{self.data_set_name}', data=self.data_set)
+                tiff_values = hdf5_file.create_dataset(f'{group_name}/{data_set_name}', data=data_set)
                 # tiff_values.attrs.create(self.meta_data)
-                logging.info(f'data set "{self.data_set_name}" created!')
+                logging.info(f'data set "{data_set_name}" created!')
 
-    def delete_data_set(self):
+    def delete_data_set(self, group_name, data_set_name):
         """ Delete a data set in the hdf5 file """
         with h5py.File(self.temp_hdf5_file_dir, 'a') as hdf5_file:
-            if f'{self.group_name}/{self.data_set_name}' in hdf5_file:
-                del hdf5_file[f'{self.group_name}/{self.data_set_name}']
-                logging.info(f'data set "{self.data_set_name}" deleted!')
+            if f'{group_name}/{data_set_name}' in hdf5_file:
+                del hdf5_file[f'{group_name}/{data_set_name}']
+                logging.info(f'data set "{data_set_name}" deleted!')
             else:
-                logging.info(f'ERROR: Could not find data set with this name: "{self.data_set_name}"')
+                logging.info(f'ERROR: Could not find data set with this name: "{data_set_name}"')
 
-    def show_data_set(self):
+    def show_data_set(self, group_name):
         """ List all data sets contained in a group"""
         with h5py.File(self.temp_hdf5_file_dir, 'a') as hdf5_file:
-            if f'{self.group_name}/' in hdf5_file:
-                data = hdf5_file[self.group_name]
+            if f'{group_name}/' in hdf5_file:
+                data = hdf5_file[group_name]
                 for data_name in data:
                     logging.info(f'Found data set: {data_name}')
             else:
-                logging.info(f'Could not find: {self.group_name}')
+                logging.info(f'Could not find: {group_name}')
 
     # override run function of the Process Class
     # here is all the stuff that should be done in the new process
@@ -128,111 +125,6 @@ class DataHandlingHDF5(Process):
             self.add_data_set()
         else:
             logging.info('Wrong Action')
-
-
-class StartNewProcess(Process):
-    # This class takes care of starting a new process (on another cpu)
-    # It inherits from the "Process" Class so everytime it is created it will start a new Process
-    # Initializing a new process takes some time and makes the thread unresponsive. Therefore, we created a new thread
-    # for this beforehand.
-
-    # override the constructor
-    def __init__(self, task_class_method):
-        # execute the base constructor
-        Process.__init__(self)
-        self.task_class_method = task_class_method
-
-    # override run function of the Process Class
-    # here is all the stuff that should be done in the new process
-    def run(self):
-        start_task = self.task_class_method
-
-
-class DataHandling(Process):
-    # This class takes care of starting a new process (on another cpu)
-    # It inherits from the "Process" Class so everytime it is created it will start a new Process
-    # Initializing a new process takes some time and makes the thread unresponsive. Therefore, we created a new thread
-    # for this beforehand.
-
-    # override the constructor
-    def __init__(self, file_dir):
-        # execute the base constructor
-        Process.__init__(self)
-        self.file_dir = file_dir
-        self.file_name = os.path.split(self.file_dir)[1][:-4]
-
-    def open_tiff(self):
-        logging.info('')
-        logging.info('Starting to load tiff file ...')
-        tiff_file = read_tiff(self.file_dir)
-        tiff_array = np.array(tiff_file[1])
-        logging.info('... tiff file loaded')
-        logging.info('')
-        return tiff_array
-
-    def delete_entry(self):
-        with h5py.File(TEMP_HDF5_FILE_DIR, 'a') as hdf5_file:
-            if f'test/{self.file_name}' in hdf5_file:
-                del hdf5_file[f'test/{self.file_name}']
-                logging.info(f'data set "{self.file_name}" deleted!')
-            else:
-                logging.info(f'ERROR: Could not find data set with this name: "{self.file_name}"')
-
-    def store_tiff(self):
-        with h5py.File(TEMP_HDF5_FILE_DIR, 'a') as hdf5_file:
-            # check how many sweeps are already there
-            sweeps = hdf5_file['sweeps']
-            if f'test/{self.file_name}' in hdf5_file:
-                logging.info('ERROR: Data name already exists')
-            else:
-                tiff_array = self.open_tiff()
-                # Create data set containing the tiff array
-                tiff_values = hdf5_file.create_dataset(f'test/{self.file_name}', data=tiff_array)
-                tiff_values.attrs.create(name='sweep', data='test')
-                logging.info(f'data set "{self.file_name}" created!')
-
-    @staticmethod
-    def show_data():
-        with h5py.File(TEMP_HDF5_FILE_DIR, 'r') as hdf5_file:
-            data = hdf5_file['test']
-            for data_name in data:
-                logging.info(f'Found data set: {data_name}')
-
-    # override run function of the Process Class
-    # here is all the stuff that should be done in the new process
-    def run(self):
-        self.store_tiff()
-        # self.delete_entry()
-        # self.show_data()
-        # logging.info('ERROR: WRONG INPUT')
-
-
-class WorkerForNewProcess(QObject):
-    # This class (QObject) will be used when opening a new thread
-    # We need to open a new thread before starting a new process, because initializing the process takes some time and
-    # would freeze the main app
-
-    finished = pyqtSignal()
-    progress = pyqtSignal(str)
-
-    def __init__(self, process_class):
-        QObject.__init__(self)
-        self.process_class = process_class
-
-    def multi_cpu(self):
-        # check if there are enough cpus available on this machine
-        cpus = cpu_count()
-        print(f'Found {cpus} logical cores')
-        if cpus >= 2:
-            # process = DataHandling()
-            process = self.process_class
-            # process = DataHandling(value='delete')
-            self.progress.emit('starting multi process')
-            process.start()
-            print('STARTING NEW PROCESS')
-            process.join()
-            self.progress.emit('finished multi process')
-            self.finished.emit()
 
 
 class ColorPicker(QColorDialog):
@@ -255,7 +147,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.showMaximized()
 
         self.sweep_count = 0
-        self.thread = QThread()
+        self.data_handler = DataHandlingHDF5()
+        self.data_handler.initialize_start_up_file()
 
         # Plotting Style
         self.plotting_style = PlottingStyle()
@@ -304,8 +197,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # self.temp_dir = 'temp/'
         # self.initialize_hdf5_start_up_file()
         self.session_count = 0
-        hdf5 = DataHandlingHDF5()
-        hdf5.initialize_start_up_file()
 
         # self.active_item = None
         self.active_item_index = QModelIndex()
@@ -658,7 +549,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def _open_tiff_recording(self):
         # Check if there is already a thread running
         # Step 2: Create a QThread object
-        if self.thread.isRunning():
+        if self.data_handler.isRunning():
             logging.info('Thread is still running ...')
         else:
             # Open up data browser
@@ -671,8 +562,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             # a = np.reshape(tiff_array, tiff_array.shape[0] * tiff_array.shape[1] * tiff_array.shape[2])
             self.sweep_count += 1
             sweep_name = f'sweep_{self.sweep_count}'
-            self.thread = QThread()
             # Step 3: Create a worker object
+            self.data_handler.add_data_set()
+
             self.worker = WorkerForNewProcess(
                 DataHandlingHDF5(
                     data_set_name='tiff_recording',
