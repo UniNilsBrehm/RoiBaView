@@ -9,6 +9,12 @@ from IPython import embed
 import numpy as np
 import logging
 from time import sleep
+try:
+    import pyarrow
+    use_pyarrow = True
+except ModuleNotFoundError:
+    use_pyarrow = False
+
 
 logging.basicConfig(format="%(message)s", level=logging.INFO)
 
@@ -78,6 +84,17 @@ class WorkerSignals(QObject):
     result = pyqtSignal(object)
 
 
+class NewThreadRunnable(QRunnable):
+    def __init__(self, run_func):
+        super().__init__()
+        self.run_func = run_func
+        self.signals = WorkerSignals()
+
+    @pyqtSlot()
+    def run(self) -> None:
+        self.run_func
+
+
 class DataHandlerRunnable(QRunnable):
     def __init__(self, data_store, command, new_data=None):
         # QObject.__init__(self)
@@ -116,6 +133,10 @@ class Controller:
         self.data_store = []
         # self.thread = QThread()
 
+    def print_stuff(self, text):
+        show_process_and_thread('Print Stuff')
+        print(text)
+
     def set_connections(self):
         self.view.start_button.clicked.connect(lambda: self.connection.send('start'))
         self.view.stop_button.clicked.connect(lambda: self.connection.send('stop'))
@@ -134,7 +155,11 @@ class Controller:
 
         # self.view.add_button.clicked.connect(self._add_new_data)
         self.view.show_button.clicked.connect(self._show_data)
-        self.view.test_freezing_button.clicked.connect(self.test_freezing)
+        # self.view.test_freezing_button.clicked.connect(self.test_freezing)
+
+        self.view.test_freezing_button.clicked.connect(lambda: self.start_new_thread(
+            NewThreadRunnable(self.print_stuff('HELLO WORLD'))
+        ))
 
     def thread_finished(self):
         logging.info('THREAD FINISHED')
