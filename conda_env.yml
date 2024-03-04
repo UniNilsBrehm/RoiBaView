@@ -1,0 +1,13 @@
+# run: conda env create -f conda_env.yml
+name: viewer
+dependencies:
+  - numpy
+  - pandas
+  - scipy
+  - pip
+  - pip:
+    - PyQt6
+    - pyqtgraph
+    - opencv-python
+    - ffmpy
+    - tifffile
