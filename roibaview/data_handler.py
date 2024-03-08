@@ -3,10 +3,16 @@ import shutil
 import numpy as np
 import pandas as pd
 from PyQt6.QtCore import pyqtSignal, QObject
+from PyQt6.QtWidgets import QMessageBox
 from IPython import embed
 from scipy import signal
+from roibaview.gui import MessageBox
 
 """
+Notes:
+    - Try to use PyTables instead of h5py
+    - Try using NixPiy
+
 Data Structure:
 .
 ├── data_sets
@@ -66,7 +72,7 @@ class DataHandler(QObject):
         data = data_file.to_numpy()
 
         # Open the temp hdf5 file and store data set there
-        self.add_new_data_set(data_set_type, data_name, data, sampling_rate=sampling_rate, header=headers)
+        check = self.add_new_data_set(data_set_type, data_name, data, sampling_rate=sampling_rate, header=headers)
 
     def get_info(self):
         with h5py.File(self.temp_file_name, 'r') as f:
@@ -84,10 +90,30 @@ class DataHandler(QObject):
             else:
                 return False
 
+    def delete_data_set(self, data_set_type, data_set_name):
+        with h5py.File(self.temp_file_name, 'r+') as f:
+            if data_set_name in f[data_set_type]:
+                print('Delete:')
+                print(f[data_set_type][data_set_name])
+                f[data_set_type][data_set_name][:] = 0
+                # del f[data_set_type][data_set_name]
+
+    def rename_data_set(self, data_set_type, data_set_name, new_name):
+        with h5py.File(self.temp_file_name, 'r+') as f:
+            if data_set_name in f[data_set_type]:
+                f[data_set_type][new_name] = f[data_set_type][data_set_name]
+                del f[data_set_type][data_set_name]
+
     def add_new_data_set(self, data_set_type, data_set_name, data, sampling_rate, header=''):
         # Open the temp hdf5 file and store data set there
+        already_exists = False
         with h5py.File(self.temp_file_name, 'r+') as f:
             # Check if data set is available
+            if data_set_name in f[data_set_type]:
+                MessageBox(title='ERROR', text='Data set with this name already exists!')
+                data_set_name = data_set_name + '_new'
+                already_exists = True
+
             new_entry = f[data_set_type].create_dataset(data_set_name, data=data)
             if data_set_type == 'global_data_sets':
                 header_name = 'header_names'
@@ -96,6 +122,7 @@ class DataHandler(QObject):
                 self.roi_count = data.shape[1]
             new_entry.attrs[header_name] = header
             new_entry.attrs['sampling_rate'] = float(sampling_rate)
+            return already_exists
 
     def add_meta_data(self, data_set_type, data_set_name, metadata_dict):
         with h5py.File(self.temp_file_name, 'r+') as f:

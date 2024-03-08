@@ -65,8 +65,12 @@ class MainWindow(QMainWindow):
 
         # Create context menu
         self.data_sets_list_context_menu = QMenu()
+        self.data_sets_list_rename = self.data_sets_list_context_menu.addAction("rename")
+        self.data_sets_list_delete = self.data_sets_list_context_menu.addAction("delete")
+        self.data_sets_list_context_menu.addSeparator()
         self.data_sets_list_to_z_score = self.data_sets_list_context_menu.addAction("z-score")
         self.data_sets_list_to_df_f = self.data_sets_list_context_menu.addAction("delta F over F")
+        self.data_sets_list_context_menu.addSeparator()
         self.filter_menu = self.data_sets_list_context_menu.addMenu('Filter')
         self.filter_moving_average = self.filter_menu.addAction("Moving Average")
         self.filter_diff = self.filter_menu.addAction("Differentiate")
@@ -162,6 +166,7 @@ class MainWindow(QMainWindow):
         self.tools_menu_open_video_viewer = self.tools_menu.addAction('Open Video Viewer')
         self.tools_menu_multiplot = self.tools_menu.addAction('Multi Plot')
         self.tools_menu_video_converter = self.tools_menu.addAction('Convert Video File')
+        self.tools_menu_registration = self.tools_menu.addAction('Registration')
 
     def show_context_menu(self, pos):
         # Show context menu at the position of the mouse cursor
@@ -220,6 +225,8 @@ class InputDialog(QDialog):
             self._set_gui_moving_average_dialog()
         elif self.dialog_type == 'butter':
             self._set_gui_butter_filter_dialog()
+        elif self.dialog_type == 'rename':
+            self._set_gui_rename_data_set()
 
     def get_input(self):
         # Return the entered settings
@@ -304,6 +311,22 @@ class InputDialog(QDialog):
         self.add_ok_cancel_buttons(layout)
         self.setLayout(layout)
 
+    def _set_gui_rename_data_set(self):
+        self.setWindowTitle("Rename Data Set")
+
+        layout = QVBoxLayout()
+
+        # Create input fields
+        self.fields['data_set_name'] = QLineEdit()
+
+        # Add labels
+        layout.addWidget(QLabel("Data Name:"))
+        layout.addWidget(self.fields['data_set_name'])
+
+        # Add OK and Cancel buttons
+        self.add_ok_cancel_buttons(layout)
+        self.setLayout(layout)
+
     def add_ok_cancel_buttons(self, layout):
         QBtn = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         buttonBox = QDialogButtonBox(QBtn)
@@ -318,3 +341,13 @@ class InputDialog(QDialog):
         # layout.addWidget(cancel_button)
 
 
+class MessageBox:
+    def __init__(self, title, text):
+        dlg = QMessageBox()
+        dlg.setWindowTitle(title)
+        dlg.setText(text)
+        dlg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        button = dlg.exec()
+        if button == QMessageBox.StandardButton.Ok:
+            print('yes')
+            return

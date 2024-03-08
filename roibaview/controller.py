@@ -7,6 +7,7 @@ from roibaview.gui import BrowseFileDialog, InputDialog
 from roibaview.data_plotter import DataPlotter, PyqtgraphSettings
 from roibaview.peak_detection import PeakDetection
 from roibaview.custom_view_box import CustomViewBoxMenu
+from roibaview.registration import Registrator
 
 
 class Controller(QObject):
@@ -30,6 +31,8 @@ class Controller(QObject):
         self.data_handler = DataHandler()
         self.selected_data_sets = []
         self.selected_data_sets_type = []
+        self.selected_data_sets_rows = []
+        self.selected_data_sets_items = []
         self.current_roi_idx = 0
 
         # Get a Data Transformer
@@ -55,7 +58,6 @@ class Controller(QObject):
         # Establish Connections to Buttons and Menus
         self.connections()
 
-
         # KeyBoard Bindings
         # self.gui.key_pressed.connect(self.on_key_press)
         # self.gui.key_released.connect(self.on_key_release)
@@ -76,6 +78,7 @@ class Controller(QObject):
         # DataSets List
         # Connect item selection changed signal
         self.gui.data_sets_list.itemSelectionChanged.connect(self.data_set_selection_changed)
+        # self.gui.data_sets_list.itemActivated.connect(lambda: print('CLICK'))
 
         # Arrow Buttons
         self.gui.next_button.clicked.connect(self.next_roi)
@@ -86,6 +89,9 @@ class Controller(QObject):
         self.signal_roi_idx_changed.connect(self.check_peak_detector)
 
         # Context Menu
+        self.gui.data_sets_list_rename.triggered.connect(self.rename_data_set)
+        self.gui.data_sets_list_delete.triggered.connect(self.delete_data_set)
+
         self.gui.data_sets_list_to_df_f.triggered.connect(lambda: self.context_menu('df_f'))
         self.gui.data_sets_list_to_z_score.triggered.connect(lambda: self.context_menu('z'))
         # Filter Submenu
@@ -98,6 +104,55 @@ class Controller(QObject):
         # Peak Detection
         self.gui.toolbar_peak_detection.triggered.connect(self._start_peak_detection)
 
+        # Tools
+        # self.gui.tools_menu_registration.triggered.connect(self.tiff_registration)
+
+    def rename_data_set(self):
+        if len(self.selected_data_sets) > 1:
+            dlg = QMessageBox()
+            dlg.setWindowTitle('ERROR')
+            dlg.setText(f'You cannot rename multiple data sets at once!')
+            button = dlg.exec()
+            if button == QMessageBox.StandardButton.Ok:
+                return None
+        if len(self.selected_data_sets) == 0:
+            return None
+
+        data_set_name, data_set_type, data_set_item = self.get_selected_data_sets(0)
+        # Get settings by user input
+        dialog = InputDialog(dialog_type='rename')
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            received = dialog.get_input()
+            new_name = received['data_set_name']
+            self.data_handler.rename_data_set(data_set_type=data_set_type, data_set_name=data_set_name, new_name=new_name)
+            # self.remove_selected_data_set_from_list(data_set_name, data_set_item)
+            # self.add_data_set_to_list(data_set_type, new_name)
+            self.rename_item_from_list(data_set_item=data_set_item, new_name=new_name)
+        else:
+            return None
+
+    def delete_data_set(self):
+        if len(self.selected_data_sets) > 0:
+            dlg = QMessageBox(self.gui)
+            dlg.setWindowTitle('Delete Data Set')
+            dlg.setText(f'Are You Sure You Want To Delete The Selected Data Sets" ?')
+            dlg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            dlg.setIcon(QMessageBox.Icon.Question)
+            button = dlg.exec()
+            if button == QMessageBox.StandardButton.Yes:
+                for dt, ds, item in zip(self.selected_data_sets_type, self.selected_data_sets, self.selected_data_sets_items):
+                    print(ds, item)
+                    print('')
+                    self.data_handler.delete_data_set(dt, ds)
+                    self.remove_selected_data_set_from_list(ds, item)
+
+    def tiff_registration(self):
+        registrator = Registrator()
+        # Get file dir
+        file_dir = self.file_browser.browse_file('tiff file, (*.tiff; *.tif)')
+        if file_dir:
+            registrator.start_registration(file_dir)
+
     def check_peak_detector(self):
         if self.peak_detection is not None:
             self.peak_detection.roi_changed(self.current_roi_idx)  # This will trigger the signal
@@ -105,7 +160,7 @@ class Controller(QObject):
     def _start_peak_detection(self):
         if len(self.selected_data_sets) > 0:
             self.gui.freeze_gui(True)
-            data_set_name, data_set_type = self.get_selected_dat_sets(k=0)
+            data_set_name, data_set_type, data_set_item = self.get_selected_data_sets(k=0)
             # current_data = self.data_handler.get_roi_data(data_set_name, roi_idx=self.current_roi_idx)
             current_data_set = self.data_handler.get_data_set(data_set_name=data_set_name, data_set_type=data_set_type)
             meta_data = self.data_handler.get_data_set_meta_data(data_set_type=data_set_type, data_set_name=data_set_name)
@@ -123,118 +178,128 @@ class Controller(QObject):
                 self.peak_detection = None
             # self.peak_detection.exec()
 
-    def get_selected_dat_sets(self, k):
+    def get_selected_data_sets(self, k):
         data_set_name = self.selected_data_sets[k]
         data_set_type = self.selected_data_sets_type[k]
-        return data_set_name, data_set_type
+        data_set_item = self.selected_data_sets_items[k]
+        return data_set_name, data_set_type, data_set_item
 
     def filter_data(self, mode):
-        k = 0
-        data_set_name = self.selected_data_sets[k]
-        data_set_type = self.selected_data_sets_type[k]
-        data = self.data_handler.get_data_set(data_set_type=data_set_type, data_set_name=data_set_name)
-        meta_data = self.data_handler.get_data_set_meta_data(data_set_type=data_set_type, data_set_name=data_set_name)
-        fr = meta_data['sampling_rate']
-        filtered_data = None
-        if mode == 'moving_average':
-            # Get settings by user input
-            dialog = InputDialog(dialog_type='moving_average')
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                received = dialog.get_input()
-                win = float(received['window'])
-            else:
-                return None
-            filtered_data = self.data_transformer.filter_moving_average(data, fr=fr, window=win)
+        if len(self.selected_data_sets) > 0:
+            for k, _ in enumerate(self.selected_data_sets):
+                # k = 0
+                data_set_name = self.selected_data_sets[k]
+                data_set_type = self.selected_data_sets_type[k]
+                if data_set_type != 'data_sets':
+                    return None
+                data = self.data_handler.get_data_set(data_set_type=data_set_type, data_set_name=data_set_name)
+                meta_data = self.data_handler.get_data_set_meta_data(data_set_type=data_set_type, data_set_name=data_set_name)
+                fr = meta_data['sampling_rate']
+                filtered_data = None
+                if mode == 'moving_average':
+                    # Get settings by user input
+                    dialog = InputDialog(dialog_type='moving_average')
+                    if dialog.exec() == QDialog.DialogCode.Accepted:
+                        received = dialog.get_input()
+                        win = float(received['window'])
+                    else:
+                        return None
+                    filtered_data = self.data_transformer.filter_moving_average(data, fr=fr, window=win)
 
-        if mode == 'diff':
-            # Get settings by user input
-            filtered_data = self.data_transformer.filter_differentiate(data)
+                if mode == 'diff':
+                    # Get settings by user input
+                    filtered_data = self.data_transformer.filter_differentiate(data)
 
-        if mode == 'lowpass':
-            # Get settings by user input
-            dialog = InputDialog(dialog_type='butter')
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                received = dialog.get_input()
-                cutoff = float(received['cutoff'])
-            else:
-                return None
-            # Get settings by user input
-            filtered_data = self.data_transformer.filter_low_pass(data, cutoff, fs=fr)
+                if mode == 'lowpass':
+                    # Get settings by user input
+                    dialog = InputDialog(dialog_type='butter')
+                    if dialog.exec() == QDialog.DialogCode.Accepted:
+                        received = dialog.get_input()
+                        cutoff = float(received['cutoff'])
+                    else:
+                        return None
+                    # Get settings by user input
+                    filtered_data = self.data_transformer.filter_low_pass(data, cutoff, fs=fr)
 
-        if mode == 'highpass':
-            # Get settings by user input
-            dialog = InputDialog(dialog_type='butter')
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                received = dialog.get_input()
-                cutoff = float(received['cutoff'])
-            else:
-                return None
-            # Get settings by user input
-            filtered_data = self.data_transformer.filter_high_pass(data, cutoff, fs=fr)
+                if mode == 'highpass':
+                    # Get settings by user input
+                    dialog = InputDialog(dialog_type='butter')
+                    if dialog.exec() == QDialog.DialogCode.Accepted:
+                        received = dialog.get_input()
+                        cutoff = float(received['cutoff'])
+                    else:
+                        return None
+                    # Get settings by user input
+                    filtered_data = self.data_transformer.filter_high_pass(data, cutoff, fs=fr)
 
-        if mode == 'env':
-            # Get settings by user input
-            dialog = InputDialog(dialog_type='butter')
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                received = dialog.get_input()
-                cutoff = float(received['cutoff'])
-            else:
-                return None
-            # Get settings by user input
-            filtered_data = self.data_transformer.envelope(data, cutoff, fs=fr)
+                if mode == 'env':
+                    # Get settings by user input
+                    dialog = InputDialog(dialog_type='butter')
+                    if dialog.exec() == QDialog.DialogCode.Accepted:
+                        received = dialog.get_input()
+                        cutoff = float(received['cutoff'])
+                    else:
+                        return None
+                    # Get settings by user input
+                    filtered_data = self.data_transformer.envelope(data, cutoff, fs=fr)
 
-        if filtered_data is not None:
-            # Create a new data set from this
-            self.data_handler.add_new_data_set(
-                data_set_type=data_set_type,
-                data_set_name=f'{data_set_name}_{mode}',
-                data=filtered_data,
-                sampling_rate=fr
-            )
-            # Add new data set to the list in the GUI
-            self.add_data_set_to_list(data_set_type, f'{data_set_name}_{mode}')
-
+                if filtered_data is not None:
+                    # Create a new data set from this
+                    check = self.data_handler.add_new_data_set(
+                        data_set_type=data_set_type,
+                        data_set_name=f'{data_set_name}_{mode}',
+                        data=filtered_data,
+                        sampling_rate=fr
+                    )
+                    # Add new data set to the list in the GUI
+                    if check:
+                        # data name already exists, so we have to change it
+                        data_set_name = f'{data_set_name}_{mode}' + '_new'
+                    else:
+                        data_set_name = f'{data_set_name}_{mode}'
+                    self.add_data_set_to_list(data_set_type, data_set_name)
 
     def context_menu(self, mode):
-        k = 0
-        data_set_name = self.selected_data_sets[k]
-        data_set_type = self.selected_data_sets_type[k]
-        data = self.data_handler.get_data_set(data_set_type=data_set_type, data_set_name=data_set_name)
-        meta_data = self.data_handler.get_data_set_meta_data(data_set_type=data_set_type, data_set_name=data_set_name)
-        if mode == 'df_f':
-            # Get settings by user input
-            dialog = InputDialog(dialog_type='df_over_f')
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                received = dialog.get_input()
-                fbs_per = float(received['fbs_per'])
-                fbs_win = float(received['fbs_window'])
-            else:
-                return None
+        result = None
+        if len(self.selected_data_sets) > 0:
+            for k, _ in enumerate(self.selected_data_sets):
+                # k = 0
+                data_set_name = self.selected_data_sets[k]
+                data_set_type = self.selected_data_sets_type[k]
+                if data_set_type != 'data_sets':
+                    return None
+                data = self.data_handler.get_data_set(data_set_type=data_set_type, data_set_name=data_set_name)
+                meta_data = self.data_handler.get_data_set_meta_data(data_set_type=data_set_type, data_set_name=data_set_name)
+                if mode == 'df_f':
+                    # Get settings by user input
+                    dialog = InputDialog(dialog_type='df_over_f')
+                    if dialog.exec() == QDialog.DialogCode.Accepted:
+                        received = dialog.get_input()
+                        fbs_per = float(received['fbs_per'])
+                        fbs_win = float(received['fbs_window'])
+                    else:
+                        return None
 
-            df_f = self.data_transformer.to_delta_f_over_f(data, fbs_per=fbs_per, fr=meta_data['sampling_rate'], window=fbs_win)
+                    result = self.data_transformer.to_delta_f_over_f(data, fbs_per=fbs_per, fr=meta_data['sampling_rate'], window=fbs_win)
 
-            # Create a new data set from this
-            self.data_handler.add_new_data_set(
-                data_set_type=data_set_type,
-                data_set_name=f'{data_set_name}_{mode}',
-                data=df_f,
-                sampling_rate=meta_data['sampling_rate']
-            )
-            # Add new data set to the list in the GUI
-            self.add_data_set_to_list(data_set_type, f'{data_set_name}_{mode}')
+                if mode == 'z':
+                    result = self.data_transformer.to_z_score(data)
 
-        if mode == 'z':
-            z_score = self.data_transformer.to_z_score(data)
-
-            # Create a new data set from this
-            self.data_handler.add_new_data_set(
-                data_set_type=data_set_type,
-                data_set_name=f'{data_set_name}_{mode}',
-                data=z_score,
-                sampling_rate=meta_data['sampling_rate']
-            )
-            # Add new data set to the list in the GUI
-            self.add_data_set_to_list(data_set_type, f'{data_set_name}_{mode}')
+                # Create a new data set from this
+                if result is not None:
+                    check = self.data_handler.add_new_data_set(
+                        data_set_type=data_set_type,
+                        data_set_name=f'{data_set_name}_{mode}',
+                        data=result,
+                        sampling_rate=meta_data['sampling_rate']
+                    )
+                    # Add new data set to the list in the GUI
+                    if check:
+                        # data set name already exists, so whe have to change it
+                        data_set_name = f'{data_set_name}_{mode}' + '_new'
+                    else:
+                        data_set_name = f'{data_set_name}_{mode}'
+                    self.add_data_set_to_list(data_set_type, data_set_name)
 
     def next_roi(self):
         # First check if there are active data sets
@@ -284,8 +349,12 @@ class Controller(QObject):
         # Get selected data sets
         self.selected_data_sets = [item.text() for item in self.gui.sender().selectedItems()]
         self.selected_data_sets_type = [item.data(1) for item in self.gui.sender().selectedItems()]
-        print("Selected Items:", self.selected_data_sets)
-        print("Selected Items Type:", self.selected_data_sets_type)
+        # self.selected_data_sets_rows = [k for k in self.gui.sender().selectedItems()]
+        self.selected_data_sets_items = [k for k in self.gui.sender().selectedItems()]
+
+        print('')
+        print(f"Selected Items: {self.selected_data_sets}, QItem: {self.selected_data_sets_items}")
+        print('')
 
         # Update Plots
         self.update_plots()
@@ -322,33 +391,59 @@ class Controller(QObject):
         self.add_data_set_to_list(data_set_type, data_set_name)
 
     def add_data_set_to_list(self, data_set_type, data_set_name):
+        # row = self.gui.data_sets_list.count()
         # Add new data set to the list in the GUI
         new_list_item = QListWidgetItem()
         new_list_item.setText(data_set_name)
         new_list_item.setData(1, data_set_type)
+        # new_list_item.setData(3, row)
         self.gui.data_sets_list.addItem(new_list_item)
+
+    def rename_item_from_list(self, data_set_item, new_name):
+        item = self.gui.data_sets_list.item(self.gui.data_sets_list.row(data_set_item))
+        item.setText(new_name)
+
+    def remove_selected_data_set_from_list(self, data_set_name, data_set_item):
+        # list_items = self.gui.data_sets_list.selectedItems()
+        # if not list_items:
+        #     return
+        # for item in list_items:
+        #     self.gui.data_sets_list.takeItem(self.gui.data_sets_list.row(item))
+        if not data_set_name:
+            return
+        else:
+            self.gui.data_sets_list.takeItem(self.gui.data_sets_list.row(data_set_item))
 
     def save_file(self):
         file_dir = self.file_browser.save_file_name('hdf5 file, (*.hdf5)')
-        self.data_handler.save_file(file_dir)
+        if file_dir:
+            self.data_handler.save_file(file_dir)
 
     def open_file(self):
         file_dir = self.file_browser.browse_file('hdf5 file, (*.hdf5)')
-        self.data_handler.open_file(file_dir)
-        data_structure = self.data_handler.get_info()
-        # Add new data set to the list in the GUI
-        for data_set_type in data_structure:
-            for ds in data_structure[data_set_type]:
-                self.add_data_set_to_list(data_set_type, ds)
+        if file_dir:
+            self.data_handler.open_file(file_dir)
+            data_structure = self.data_handler.get_info()
+            # Add new data set to the list in the GUI
+            for data_set_type in data_structure:
+                for ds in data_structure[data_set_type]:
+                    self.add_data_set_to_list(data_set_type, ds)
 
-        # Get the ROI count (from the first data set)
-        if 'data_sets' in data_structure:
-            ds = data_structure['data_sets'][0]
-            self.data_handler.roi_count = self.data_handler.get_roi_count(ds)
+            # Get the ROI count (from the first data set)
+            if 'data_sets' in data_structure:
+                ds = data_structure['data_sets'][0]
+                self.data_handler.roi_count = self.data_handler.get_roi_count(ds)
 
     def new_file(self):
-        self.data_handler.new_file()
-        self.gui.data_sets_list.clear()
+        dlg = QMessageBox(self.gui)
+        dlg.setWindowTitle('New Session')
+        dlg.setText(f'Are you sure you want start a new session. All unsaved data will be lost!')
+        dlg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        dlg.setIcon(QMessageBox.Icon.Question)
+        button = dlg.exec()
+        if button == QMessageBox.StandardButton.Yes:
+            self.data_handler.new_file()
+            self.gui.data_sets_list.clear()
 
     def _create_short_cuts(self):
         pass
@@ -368,17 +463,20 @@ class Controller(QObject):
             if self.peak_detection is not None:
                 self.peak_detection.main_window_closing.emit()
             # self._save_file()
+            self.data_handler.create_new_temp_hdf5_file()
         elif retval == QMessageBox.StandardButton.Discard:
             # Do not save before exit
             event.accept()
             if self.peak_detection is not None:
                 self.peak_detection.main_window_closing.emit()
+            self.data_handler.create_new_temp_hdf5_file()
         else:
             # Do not exit
             event.ignore()
 
-    def exit_app(self):
-        self.gui.close()
+    # def exit_app(self):
+    #     self.data_handler.create_new_temp_hdf5_file()
+    #     self.gui.close()
 
     def mouse_moved(self, event):
         vb = self.gui.trace_plot_item.vb
