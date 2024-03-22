@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import QMainWindow, QPushButton, QWidget, QLabel, QVBoxLayo
     QMessageBox, QHBoxLayout, QSlider, QComboBox, QToolBar, QListWidget, QListWidgetItem, QFileDialog, QInputDialog, \
     QScrollArea, QMenu, QLineEdit, QDialog, QCheckBox, QDialogButtonBox
 import pyqtgraph as pg
+import os
 
 
 class MainWindow(QMainWindow):
@@ -63,10 +64,12 @@ class MainWindow(QMainWindow):
         self.data_sets_list_scroll_area.setWidget(self.data_sets_list)
         self.data_sets_list_scroll_area.setWidgetResizable(False)  # Allow the scroll area to resize its contents
 
-        # Create context menu
+        # Create context menu for data list
         self.data_sets_list_context_menu = QMenu()
         self.data_sets_list_rename = self.data_sets_list_context_menu.addAction("rename")
         self.data_sets_list_delete = self.data_sets_list_context_menu.addAction("delete")
+        self.data_sets_list_context_menu.addSeparator()
+        self.data_sets_list_time_offset = self.data_sets_list_context_menu.addAction("time offset")
         self.data_sets_list_context_menu.addSeparator()
         self.data_sets_list_to_z_score = self.data_sets_list_context_menu.addAction("z-score")
         self.data_sets_list_to_df_f = self.data_sets_list_context_menu.addAction("delta F over F")
@@ -90,7 +93,7 @@ class MainWindow(QMainWindow):
         self.toolbar.toggleViewAction().setEnabled(False)
         self.addToolBar(self.toolbar)
 
-        # Raw F Button
+        # Detect Peaks
         self.toolbar_peak_detection = QAction("Detect Peaks", self)
         # self.toolbar_raw_action.setToolTip("Raw Data (R)")
         self.toolbar.addAction(self.toolbar_peak_detection)
@@ -167,6 +170,7 @@ class MainWindow(QMainWindow):
         self.tools_menu_multiplot = self.tools_menu.addAction('Multi Plot')
         self.tools_menu_video_converter = self.tools_menu.addAction('Convert Video File')
         self.tools_menu_registration = self.tools_menu.addAction('Registration')
+        self.tools_menu_convert_csv = self.tools_menu.addAction('Convert csv files')
 
     def show_context_menu(self, pos):
         # Show context menu at the position of the mouse cursor
@@ -205,10 +209,14 @@ class BrowseFileDialog(QFileDialog):
 
     def browse_file(self, file_format):
         file_dir = self.getOpenFileName(self.master, 'Open File', self.default_dir, file_format)[0]
+        # change default dir to current dir
+        self.default_dir = os.path.split(file_dir)[0]
         return file_dir
 
     def save_file_name(self, file_format):
         file_dir = self.getSaveFileName(self.master, 'Open File', self.default_dir, file_format)[0]
+        # change default dir to current dir
+        self.default_dir = os.path.split(file_dir)[0]
         return file_dir
 
 
@@ -333,12 +341,6 @@ class InputDialog(QDialog):
         buttonBox.accepted.connect(self.accept)
         buttonBox.rejected.connect(self.reject)
         layout.addWidget(buttonBox)
-        # ok_button = QPushButton("OK")
-        # ok_button.clicked.connect(self.accept)
-        # cancel_button = QPushButton("Cancel")
-        # cancel_button.clicked.connect(self.reject_dialog)
-        # layout.addWidget(ok_button)
-        # layout.addWidget(cancel_button)
 
 
 class MessageBox:
@@ -351,3 +353,44 @@ class MessageBox:
         if button == QMessageBox.StandardButton.Ok:
             print('yes')
             return
+
+
+class SimpleInputDialog(QDialog):
+    """
+    That's how you call it:
+        dialog = InputDialog(title='Settings', text='Please enter some stuff: ')
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            received = dialog.get_input()
+        else:
+            return None
+    """
+    def __init__(self, title, text,  parent=None):
+        super().__init__(parent)
+        self.title = title
+        self.text = text
+
+        self.setWindowTitle(self.title)
+        layout = QVBoxLayout()
+
+        # Create input fields
+        self.user_input = QLineEdit()
+
+        # Add labels
+        layout.addWidget(QLabel(self.text))
+        layout.addWidget(self.user_input)
+
+        # Add OK and Cancel buttons
+        self.add_ok_cancel_buttons(layout)
+        self.setLayout(layout)
+
+    def get_input(self):
+        # Return the entered settings
+        output = self.user_input.text()
+        return output
+
+    def add_ok_cancel_buttons(self, layout):
+        QBtn = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        buttonBox = QDialogButtonBox(QBtn)
+        buttonBox.accepted.connect(self.accept)
+        buttonBox.rejected.connect(self.reject)
+        layout.addWidget(buttonBox)

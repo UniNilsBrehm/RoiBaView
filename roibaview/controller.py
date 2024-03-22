@@ -1,13 +1,15 @@
 import numpy as np
+import pandas as pd
 from PyQt6.QtWidgets import QMessageBox, QListWidget, QListWidgetItem, QDialog
 from PyQt6.QtCore import pyqtSignal, QObject, Qt
 from IPython import embed
 from roibaview.data_handler import DataHandler, TransformData
-from roibaview.gui import BrowseFileDialog, InputDialog
+from roibaview.gui import BrowseFileDialog, InputDialog, SimpleInputDialog
 from roibaview.data_plotter import DataPlotter, PyqtgraphSettings
 from roibaview.peak_detection import PeakDetection
 from roibaview.custom_view_box import CustomViewBoxMenu
 from roibaview.registration import Registrator
+from roibaview.video_viewer import VideoViewer
 
 
 class Controller(QObject):
@@ -46,6 +48,10 @@ class Controller(QObject):
         # Hide "Plot Options"
         self.gui.trace_plot_item.ctrlMenu.menuAction().setVisible(False)
 
+        # Get a Video Viewer
+        self.video_viewer = VideoViewer()
+        self.video_viewers = []
+
         # Get DataPlotter
         self.data_plotter = DataPlotter(self.gui.trace_plot_item)
 
@@ -64,9 +70,6 @@ class Controller(QObject):
         self.gui.trace_plot_item.scene().sigMouseMoved.connect(self.mouse_moved)
 
         self.pyqtgraph_settings = PyqtgraphSettings()
-
-    def signals(self):
-        pass
 
     def connections(self):
         # File Menu
@@ -91,6 +94,7 @@ class Controller(QObject):
         # Context Menu
         self.gui.data_sets_list_rename.triggered.connect(self.rename_data_set)
         self.gui.data_sets_list_delete.triggered.connect(self.delete_data_set)
+        self.gui.data_sets_list_time_offset.triggered.connect(self.time_offset)
 
         self.gui.data_sets_list_to_df_f.triggered.connect(lambda: self.context_menu('df_f'))
         self.gui.data_sets_list_to_z_score.triggered.connect(lambda: self.context_menu('z'))
@@ -105,7 +109,91 @@ class Controller(QObject):
         self.gui.toolbar_peak_detection.triggered.connect(self._start_peak_detection)
 
         # Tools
-        # self.gui.tools_menu_registration.triggered.connect(self.tiff_registration)
+        # Video Viewer
+        self.gui.tools_menu_open_video_viewer.triggered.connect(self.open_video_viewer)
+        self.video_viewer.TimePoint.connect(self.connect_video_to_plot)
+        self.gui.tools_menu_convert_csv.triggered.connect(self.convert_csv_files)
+
+    def convert_csv_files(self):
+        file_dir = self.file_browser.browse_file('csv file, (*.csv, *.txt)')
+        if file_dir:
+            dialog = SimpleInputDialog('Convert csv file', 'Please enter delimiter of input file: ')
+            # if dialog.exec() == QDialog.DialogCode.Accepted:
+            if dialog.exec() == dialog.DialogCode.Accepted:
+                input_delimiter = dialog.get_input()
+            else:
+                return None
+
+            dialog = SimpleInputDialog('Convert csv file', 'Please enter delimiter of output file: ')
+            if dialog.exec() == dialog.DialogCode.Accepted:
+                output_delimiter = dialog.get_input()
+            else:
+                return None
+
+            if input_delimiter == 'tab':
+                input_file = pd.read_csv(file_dir, sep='\s+', index_col=False)
+            else:
+                input_file = pd.read_csv(file_dir, sep=input_delimiter, index_col=False)
+                # input_file = pd.read_csv(file_dir, index_col=False, delim_whitespace=True)
+
+            out_file_dir = self.file_browser.save_file_name('csv file, (*.csv)')
+            if out_file_dir:
+                try:
+                    input_file.to_csv(out_file_dir, sep=output_delimiter, index=False)
+                except TypeError:
+                    print('ERROR: "delimiter" must be a 1-character string')
+
+    def connect_video_to_plot(self, time_point):
+        for v in self.video_viewers:
+            if v.connected_to_data_trace:
+                if len(self.selected_data_sets) > 0:
+                    y_min = []
+                    y_max = []
+                    for data_set_name, data_set_type in zip(self.selected_data_sets, self.selected_data_sets_type):
+                        if data_set_type == 'data_sets':
+                            data = self.data_handler.get_roi_data(data_set_name, roi_idx=self.current_roi_idx)
+                        else:
+                            data = self.data_handler.get_data_set('global_data_sets', data_set_name)
+                        y_min.append(np.min(data))
+                        y_max.append(np.max(data))
+                    y_range = [np.min(y_min), np.max(y_max)]
+                    self.data_plotter.update_video_plot(time_point, y_range)
+                else:
+                    self.data_plotter.clear_plot_data(name='video')
+            else:
+                self.data_plotter.clear_plot_data(name='video')
+
+    def open_video_viewer(self):
+        self.video_viewers.append(VideoViewer())
+        self.video_viewers[-1].show()
+        self.video_viewers[-1].TimePoint.connect(self.connect_video_to_plot)
+
+        # self.video_viewer = VideoViewer()
+        # self.video_viewer.show()
+
+    def time_offset(self):
+        if len(self.selected_data_sets) > 0:
+            for k, _ in enumerate(self.selected_data_sets):
+                data_set_name = self.selected_data_sets[k]
+                data_set_type = self.selected_data_sets_type[k]
+
+                # Get settings by user input
+                dialog = SimpleInputDialog('Settings', 'Please enter Time Offset [s]: ')
+                if dialog.exec() == dialog.DialogCode.Accepted:
+                    time_offset = {'time_offset': float(dialog.get_input())}
+                    self.data_handler.add_meta_data(data_set_type, data_set_name, time_offset)
+                    self.update_plots(change_global=True)
+                else:
+                    return None
+
+                # dialog = InputDialog(dialog_type='moving_average')
+                # if dialog.exec() == QDialog.DialogCode.Accepted:
+                #     received = dialog.get_input()
+                #     time_offset = {'time_offset': float(received['window'])}
+                #     self.data_handler.add_meta_data(data_set_type, data_set_name, time_offset)
+                #     self.update_plots(change_global=True)
+                # else:
+                #     return None
 
     def rename_data_set(self):
         if len(self.selected_data_sets) > 1:
@@ -323,27 +411,31 @@ class Controller(QObject):
         for data_set_name, data_set_type in zip(self.selected_data_sets, self.selected_data_sets_type):
             if data_set_type == 'data_sets':
                 r = self.data_handler.get_roi_data(data_set_name, roi_idx=self.current_roi_idx)
-                fr = self.data_handler.get_data_set_meta_data('data_sets', data_set_name)['sampling_rate']
-                time_points.append(self.data_transformer.compute_time_axis(r.shape[0], fr))
+                meta_data = self.data_handler.get_data_set_meta_data('data_sets', data_set_name)
+                fr = meta_data['sampling_rate']
+                time_offset = meta_data['time_offset']
+                time_points.append(self.data_transformer.compute_time_axis(r.shape[0], fr) + time_offset)
                 roi_data.append(r)
             if data_set_type == 'global_data_sets' and change_global:
                 r = self.data_handler.get_data_set('global_data_sets', data_set_name)
-                fr = self.data_handler.get_data_set_meta_data('global_data_sets', data_set_name)['sampling_rate']
+                meta_data = self.data_handler.get_data_set_meta_data('global_data_sets', data_set_name)
+                fr = meta_data['sampling_rate']
+                time_offset = meta_data['time_offset']
+                global_time_points.append(self.data_transformer.compute_time_axis(r.shape[0], fr) + time_offset)
                 global_data.append(r)
-                global_time_points.append(self.data_transformer.compute_time_axis(r.shape[0], fr))
 
         # Update Plot
         if len(roi_data) > 0:
             self.data_plotter.update(time_points, roi_data)
         else:
-            self.data_plotter.clear_roi_data()
+            self.data_plotter.clear_plot_data(name='data')
 
         # Update Global Plot
         if change_global:
             if len(global_data) > 0:
                 self.data_plotter.update_global(global_time_points, global_data)
             else:
-                self.data_plotter.clear_global_data()
+                self.data_plotter.clear_plot_data(name='global')
 
     def data_set_selection_changed(self):
         # Get selected data sets

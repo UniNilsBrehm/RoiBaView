@@ -59,18 +59,18 @@ class DataHandler(QObject):
     def import_csv(self, file_dir, data_name, sampling_rate, data_set_type):
         # The .csv file: Each Column is the data of one ROI so the shape is (Samples, ROIs)
         # First check if there are headers (ROI Names)
-        data_check = pd.read_csv(file_dir, decimal=self.csv_decimal, sep=self.csv_sep, index_col=0, nrows=1, header=None)
+        data_check = pd.read_csv(file_dir, decimal=self.csv_decimal, sep=self.csv_sep, index_col=None, nrows=1, header=None)
         if data_check.iloc[0, :].dtype == 'O':
             # There are headers
-            headers = list(data_check.iloc[0, :])
-            data_file = pd.read_csv(file_dir, decimal=self.csv_decimal, sep=self.csv_sep, index_col=0)
+            headers = data_check.iloc[0, :].to_numpy()
+            data_file = pd.read_csv(file_dir, decimal=self.csv_decimal, sep=self.csv_sep, index_col=None)
         else:
-            data_file = pd.read_csv(file_dir, decimal=self.csv_decimal, sep=self.csv_sep, index_col=0, header=None)
-            headers = list(np.arange(0, data_file.shape[1], 1).astype(str))
+            data_file = pd.read_csv(file_dir, decimal=self.csv_decimal, sep=self.csv_sep, index_col=None, header=None)
+            # headers = list(np.arange(0, data_file.shape[1], 1).astype(str))
+            headers = np.arange(0, data_file.shape[1], 1)
 
         # This needs to be converted to a numpy matrix
         data = data_file.to_numpy()
-
         # Open the temp hdf5 file and store data set there
         check = self.add_new_data_set(data_set_type, data_name, data, sampling_rate=sampling_rate, header=headers)
 
@@ -122,6 +122,7 @@ class DataHandler(QObject):
                 self.roi_count = data.shape[1]
             new_entry.attrs[header_name] = header
             new_entry.attrs['sampling_rate'] = float(sampling_rate)
+            new_entry.attrs['time_offset'] = 0
             return already_exists
 
     def add_meta_data(self, data_set_type, data_set_name, metadata_dict):
