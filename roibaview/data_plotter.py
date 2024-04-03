@@ -23,29 +23,6 @@ class DataPlotter:
                 if item.name().startswith(name):
                     self.master_plot.removeItem(item)
 
-    # def clear_roi_data(self):
-    #     # check if there is already roi data plotted and remove it
-    #     item_list = self.master_plot.items.copy()
-    #     for item in item_list:
-    #         if item.name() is not None:
-    #             if item.name().startswith('data'):
-    #                 self.master_plot.removeItem(item)
-    #
-    # def clear_global_data(self):
-    #     # check if there is already global data plotted and remove it
-    #     item_list = self.master_plot.items.copy()
-    #     for item in item_list:
-    #         if item.name() is not None:
-    #             if item.name().startswith('global'):
-    #                 self.master_plot.removeItem(item)
-
-    # def clear_video_data(self):
-    #     item_list = self.master_plot.items.copy()
-    #     for item in item_list:
-    #         if item.name() is not None:
-    #             if item.name().startswith('video'):
-    #                 self.master_plot.removeItem(item)
-
     def update_video_plot(self, time_point, y_range):
         self.clear_plot_data(name='video')
         plot_data_item = pg.PlotDataItem(
@@ -58,18 +35,23 @@ class DataPlotter:
         # Add plot item to the plot widget
         self.master_plot.addItem(plot_data_item)
 
-    def update(self, time_axis, data):
-        # check if there is already roi data plotted and remove it
-        # self.clear_roi_data()
+    def update(self, time_axis, data, meta_data=None):
+        # check if there is already roi data plotted and remove
         self.clear_plot_data(name='data')
 
         cc = 0
         for t, y in zip(time_axis, data):
+            # get meta data
+            if meta_data is not None:
+                color = meta_data[cc]['color']
+                lw = meta_data[cc]['lw']
+            else:
+                color = '#000000'  # black
+                lw = 1
             # Create new  plot item
             plot_data_item = pg.PlotDataItem(
                 t, y,
-                pen=pg.mkPen(color=(0, 0, 0)),
-                # name=f'{self.data_handler.data_name}_ROI{self.data_handler.roi_id}',
+                pen=pg.mkPen(color=color, width=lw),
                 name=f'data_{cc}',
                 skipFiniteCheck=True,
                 tip=None,
@@ -79,7 +61,7 @@ class DataPlotter:
             self.master_plot.addItem(plot_data_item)
             cc += 1
 
-    def update_global(self, time_axis, data):
+    def update_global(self, time_axis, data, meta_data=None):
         # self.clear_global_data()
         self.clear_plot_data(name='global')
 
@@ -87,11 +69,17 @@ class DataPlotter:
         for t, y_data in zip(time_axis, data):
             # Each column in global data set can be a trace
             for y in y_data.T:
+                # get meta data
+                if meta_data is not None:
+                    color = meta_data[cc]['color']
+                    lw = meta_data[cc]['lw']
+                else:
+                    color = '#000000'  # black
+                    lw = 1
                 # Create new  plot item
                 plot_data_item = pg.PlotDataItem(
                     t, y,
-                    pen=pg.mkPen(color=(255, 0, 0)),
-                    # name=f'{self.data_handler.data_name}_ROI{self.data_handler.roi_id}',
+                    pen=pg.mkPen(color=color, width=lw),
                     name=f'global_{cc}',
                     skipFiniteCheck=True,
                     tip=None,

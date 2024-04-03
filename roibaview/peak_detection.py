@@ -1,9 +1,11 @@
 import pyqtgraph as pg
 import numpy as np
 from PyQt6.QtCore import pyqtSignal, QObject, Qt
-from PyQt6.QtWidgets import QVBoxLayout, QSlider, QLabel, QWidget, QSpacerItem, QSizePolicy, QMessageBox, QDialog
+from PyQt6.QtWidgets import QVBoxLayout, QSlider, QLabel, QWidget, QSpacerItem, QSizePolicy, QMessageBox, QDialog, QPushButton
 from scipy import signal
 from IPython import embed
+from roibaview.gui import BrowseFileDialog
+import pandas as pd
 
 
 # class PeakDetection(QWidget):
@@ -19,6 +21,7 @@ class PeakDetection(QDialog):
         self.data = data  # this is the data set
         self.data_trace = self.data[:, self.roi_idx]  # this is the roi trace
         self.fr = fr
+        self.time_axis = self.compute_time_axis(self.data_trace.shape[0], self.fr)
         self.master_plot = master_plot
         self.parameters = dict()
         self.parameters_range = dict()
@@ -31,6 +34,22 @@ class PeakDetection(QDialog):
         self.main_window_running = True
         self.signal_roi_changed.connect(self.roi_changed)
         self.main_window_closing.connect(self.main_window_is_closing)
+
+    def export_peaks(self):
+        file_browser = BrowseFileDialog(self)
+        file_dir = file_browser.save_file_name('csv file, (*.csv)')
+        if file_dir:
+            result = pd.DataFrame()
+            result['Time'] = self.peaks['times']
+            result['ID'] = self.peaks['idx']
+            for k in self.peaks['props']:
+                result[k] = self.peaks['props'][k]
+            result.to_csv(file_dir)
+
+    @staticmethod
+    def compute_time_axis(data_size, fr):
+        max_time = data_size / fr
+        return np.linspace(0, max_time, data_size)
 
     def main_window_is_closing(self):
         self.main_window_running = False
@@ -67,6 +86,10 @@ class PeakDetection(QDialog):
             # Add spacer (width, height)
             spacer = QSpacerItem(20, 20, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
             layout.addItem(spacer)
+
+        self.export_button = QPushButton('Export...')
+        self.export_button.clicked.connect(self.export_peaks)
+        layout.addWidget(self.export_button)
 
         self.setLayout(layout)
         self.setWindowTitle("Peak Detection Parameters")
@@ -117,7 +140,8 @@ class PeakDetection(QDialog):
 
         # Create new  plot item
         plot_data_item = pg.ScatterPlotItem(
-            self.peaks['times'], self.data_trace[self.peaks['idx']],
+            # self.peaks['times'], self.data_trace[self.peaks['idx']],
+            self.time_axis[self.peaks['idx']], self.data_trace[self.peaks['idx']],
             pen=pg.mkPen(color=(255, 0, 0)),
             brush=pg.mkBrush(color=(255, 0, 0)),
             size=50,

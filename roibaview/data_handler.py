@@ -72,7 +72,7 @@ class DataHandler(QObject):
         # This needs to be converted to a numpy matrix
         data = data_file.to_numpy()
         # Open the temp hdf5 file and store data set there
-        check = self.add_new_data_set(data_set_type, data_name, data, sampling_rate=sampling_rate, header=headers)
+        check = self.add_new_data_set(data_set_type, data_name, data, sampling_rate=sampling_rate, time_offset=0, header=headers)
 
     def get_info(self):
         with h5py.File(self.temp_file_name, 'r') as f:
@@ -104,7 +104,7 @@ class DataHandler(QObject):
                 f[data_set_type][new_name] = f[data_set_type][data_set_name]
                 del f[data_set_type][data_set_name]
 
-    def add_new_data_set(self, data_set_type, data_set_name, data, sampling_rate, header=''):
+    def add_new_data_set(self, data_set_type, data_set_name, data, sampling_rate, time_offset, header=''):
         # Open the temp hdf5 file and store data set there
         already_exists = False
         with h5py.File(self.temp_file_name, 'r+') as f:
@@ -122,7 +122,10 @@ class DataHandler(QObject):
                 self.roi_count = data.shape[1]
             new_entry.attrs[header_name] = header
             new_entry.attrs['sampling_rate'] = float(sampling_rate)
-            new_entry.attrs['time_offset'] = 0
+            new_entry.attrs['time_offset'] = time_offset
+            new_entry.attrs['color'] = '#000000'  # black
+            new_entry.attrs['lw'] = 1
+
             return already_exists
 
     def add_meta_data(self, data_set_type, data_set_name, metadata_dict):

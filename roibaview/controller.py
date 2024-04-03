@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import QMessageBox, QListWidget, QListWidgetItem, QDialog
 from PyQt6.QtCore import pyqtSignal, QObject, Qt
 from IPython import embed
 from roibaview.data_handler import DataHandler, TransformData
-from roibaview.gui import BrowseFileDialog, InputDialog, SimpleInputDialog
+from roibaview.gui import BrowseFileDialog, InputDialog, SimpleInputDialog, ChangeStyle
 from roibaview.data_plotter import DataPlotter, PyqtgraphSettings
 from roibaview.peak_detection import PeakDetection
 from roibaview.custom_view_box import CustomViewBoxMenu
@@ -95,15 +95,20 @@ class Controller(QObject):
         self.gui.data_sets_list_rename.triggered.connect(self.rename_data_set)
         self.gui.data_sets_list_delete.triggered.connect(self.delete_data_set)
         self.gui.data_sets_list_time_offset.triggered.connect(self.time_offset)
-
         self.gui.data_sets_list_to_df_f.triggered.connect(lambda: self.context_menu('df_f'))
         self.gui.data_sets_list_to_z_score.triggered.connect(lambda: self.context_menu('z'))
+        self.gui.data_sets_list_to_min_max.triggered.connect(lambda: self.context_menu('min_max'))
+
         # Filter Submenu
         self.gui.filter_moving_average.triggered.connect(lambda: self.filter_data('moving_average'))
         self.gui.filter_diff.triggered.connect(lambda: self.filter_data('diff'))
         self.gui.filter_lowpass.triggered.connect(lambda: self.filter_data('lowpass'))
         self.gui.filter_highpass.triggered.connect(lambda: self.filter_data('highpass'))
         self.gui.filter_envelope.triggered.connect(lambda: self.filter_data('env'))
+
+        # Style Submenu
+        self.gui.style_color.triggered.connect(self.pick_color)
+        self.gui.style_lw.triggered.connect(self.pick_lw)
 
         # Peak Detection
         self.gui.toolbar_peak_detection.triggered.connect(self._start_peak_detection)
@@ -113,6 +118,43 @@ class Controller(QObject):
         self.gui.tools_menu_open_video_viewer.triggered.connect(self.open_video_viewer)
         self.video_viewer.TimePoint.connect(self.connect_video_to_plot)
         self.gui.tools_menu_convert_csv.triggered.connect(self.convert_csv_files)
+
+        # KeyBoard Bindings
+        self.gui.key_pressed.connect(self.on_key_press)
+
+    def pick_lw(self):
+        if len(self.selected_data_sets) > 1:
+            dlg = QMessageBox()
+            dlg.setWindowTitle('ERROR')
+            dlg.setText(f'You cannot change color of multiple data sets at once!')
+            button = dlg.exec()
+            if button == QMessageBox.StandardButton.Ok:
+                return None
+
+        if len(self.selected_data_sets) == 0:
+            return None
+
+        lw = ChangeStyle().get_lw()
+        data_set_name, data_set_type, data_set_item = self.get_selected_data_sets(0)
+        self.data_handler.add_meta_data(data_set_type=data_set_type, data_set_name=data_set_name, metadata_dict={'lw': lw})
+        self.update_plots(change_global=True)
+
+    def pick_color(self):
+        if len(self.selected_data_sets) > 1:
+            dlg = QMessageBox()
+            dlg.setWindowTitle('ERROR')
+            dlg.setText(f'You cannot change color of multiple data sets at once!')
+            button = dlg.exec()
+            if button == QMessageBox.StandardButton.Ok:
+                return None
+
+        if len(self.selected_data_sets) == 0:
+            return None
+
+        color = ChangeStyle().get_color()
+        data_set_name, data_set_type, data_set_item = self.get_selected_data_sets(0)
+        self.data_handler.add_meta_data(data_set_type=data_set_type, data_set_name=data_set_name, metadata_dict={'color': color})
+        self.update_plots(change_global=True)
 
     def convert_csv_files(self):
         file_dir = self.file_browser.browse_file('csv file, (*.csv, *.txt)')
@@ -176,24 +218,19 @@ class Controller(QObject):
             for k, _ in enumerate(self.selected_data_sets):
                 data_set_name = self.selected_data_sets[k]
                 data_set_type = self.selected_data_sets_type[k]
+                meta_data = self.data_handler.get_data_set_meta_data(
+                    data_set_type=data_set_type,
+                    data_set_name=data_set_name
+                )
 
                 # Get settings by user input
-                dialog = SimpleInputDialog('Settings', 'Please enter Time Offset [s]: ')
+                dialog = SimpleInputDialog('Settings', 'Please enter Time Offset [s]: ', default_value=meta_data['time_offset'])
                 if dialog.exec() == dialog.DialogCode.Accepted:
                     time_offset = {'time_offset': float(dialog.get_input())}
                     self.data_handler.add_meta_data(data_set_type, data_set_name, time_offset)
                     self.update_plots(change_global=True)
                 else:
                     return None
-
-                # dialog = InputDialog(dialog_type='moving_average')
-                # if dialog.exec() == QDialog.DialogCode.Accepted:
-                #     received = dialog.get_input()
-                #     time_offset = {'time_offset': float(received['window'])}
-                #     self.data_handler.add_meta_data(data_set_type, data_set_name, time_offset)
-                #     self.update_plots(change_global=True)
-                # else:
-                #     return None
 
     def rename_data_set(self):
         if len(self.selected_data_sets) > 1:
@@ -229,8 +266,8 @@ class Controller(QObject):
             button = dlg.exec()
             if button == QMessageBox.StandardButton.Yes:
                 for dt, ds, item in zip(self.selected_data_sets_type, self.selected_data_sets, self.selected_data_sets_items):
-                    print(ds, item)
-                    print('')
+                    # print(ds, item)
+                    # print('')
                     self.data_handler.delete_data_set(dt, ds)
                     self.remove_selected_data_set_from_list(ds, item)
 
@@ -337,7 +374,8 @@ class Controller(QObject):
                         data_set_type=data_set_type,
                         data_set_name=f'{data_set_name}_{mode}',
                         data=filtered_data,
-                        sampling_rate=fr
+                        sampling_rate=fr,
+                        time_offset=meta_data['time_offset']
                     )
                     # Add new data set to the list in the GUI
                     if check:
@@ -354,8 +392,8 @@ class Controller(QObject):
                 # k = 0
                 data_set_name = self.selected_data_sets[k]
                 data_set_type = self.selected_data_sets_type[k]
-                if data_set_type != 'data_sets':
-                    return None
+                # if data_set_type != 'data_sets':
+                #     return None
                 data = self.data_handler.get_data_set(data_set_type=data_set_type, data_set_name=data_set_name)
                 meta_data = self.data_handler.get_data_set_meta_data(data_set_type=data_set_type, data_set_name=data_set_name)
                 if mode == 'df_f':
@@ -373,13 +411,18 @@ class Controller(QObject):
                 if mode == 'z':
                     result = self.data_transformer.to_z_score(data)
 
+                if mode == 'min_max':
+                    result = self.data_transformer.to_min_max(data)
+                    # print('MIN_MAX')
+
                 # Create a new data set from this
                 if result is not None:
                     check = self.data_handler.add_new_data_set(
                         data_set_type=data_set_type,
                         data_set_name=f'{data_set_name}_{mode}',
                         data=result,
-                        sampling_rate=meta_data['sampling_rate']
+                        sampling_rate=meta_data['sampling_rate'],
+                        time_offset=meta_data['time_offset']
                     )
                     # Add new data set to the list in the GUI
                     if check:
@@ -402,12 +445,15 @@ class Controller(QObject):
             self.signal_roi_idx_changed.emit()
 
     def update_plots(self, change_global=True):
-        print(f'ROI: {self.current_roi_idx}')
+        # print(f'ROI: {self.current_roi_idx}')
         # get new roi data
         roi_data = []
         time_points = []
         global_data = []
         global_time_points = []
+        meta_data_list = list()
+        global_meta_data_list = list()
+
         for data_set_name, data_set_type in zip(self.selected_data_sets, self.selected_data_sets_type):
             if data_set_type == 'data_sets':
                 r = self.data_handler.get_roi_data(data_set_name, roi_idx=self.current_roi_idx)
@@ -416,6 +462,7 @@ class Controller(QObject):
                 time_offset = meta_data['time_offset']
                 time_points.append(self.data_transformer.compute_time_axis(r.shape[0], fr) + time_offset)
                 roi_data.append(r)
+                meta_data_list.append(meta_data)
             if data_set_type == 'global_data_sets' and change_global:
                 r = self.data_handler.get_data_set('global_data_sets', data_set_name)
                 meta_data = self.data_handler.get_data_set_meta_data('global_data_sets', data_set_name)
@@ -423,17 +470,19 @@ class Controller(QObject):
                 time_offset = meta_data['time_offset']
                 global_time_points.append(self.data_transformer.compute_time_axis(r.shape[0], fr) + time_offset)
                 global_data.append(r)
+                global_meta_data_list.append(meta_data)
 
         # Update Plot
         if len(roi_data) > 0:
-            self.data_plotter.update(time_points, roi_data)
+            self.data_plotter.update(time_points, roi_data, meta_data_list)
+            self.data_plotter.master_plot.setTitle(f'ROI: {self.current_roi_idx+1}')
         else:
             self.data_plotter.clear_plot_data(name='data')
 
         # Update Global Plot
         if change_global:
             if len(global_data) > 0:
-                self.data_plotter.update_global(global_time_points, global_data)
+                self.data_plotter.update_global(global_time_points, global_data, global_meta_data_list)
             else:
                 self.data_plotter.clear_plot_data(name='global')
 
@@ -444,9 +493,9 @@ class Controller(QObject):
         # self.selected_data_sets_rows = [k for k in self.gui.sender().selectedItems()]
         self.selected_data_sets_items = [k for k in self.gui.sender().selectedItems()]
 
-        print('')
-        print(f"Selected Items: {self.selected_data_sets}, QItem: {self.selected_data_sets_items}")
-        print('')
+        # print('')
+        # print(f"Selected Items: {self.selected_data_sets}, QItem: {self.selected_data_sets_items}")
+        # print('')
 
         # Update Plots
         self.update_plots()
@@ -454,33 +503,33 @@ class Controller(QObject):
     def import_csv_file(self):
         # Get file dir
         file_dir = self.file_browser.browse_file('csv file, (*.csv)')
+        if file_dir:
+            # Get data set name by user
+            # dialog = ImportCsvDialog()
+            dialog = InputDialog(dialog_type='import_csv')
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                # data_set_name, fr, is_global = dialog.get_settings()
+                received = dialog.get_input()
+                data_set_name = received['data_set_name']
+                fr = float(received['fr'])
+                is_global = received['is_global']
+            else:
+                return None
 
-        # Get data set name by user
-        # dialog = ImportCsvDialog()
-        dialog = InputDialog(dialog_type='import_csv')
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            # data_set_name, fr, is_global = dialog.get_settings()
-            received = dialog.get_input()
-            data_set_name = received['data_set_name']
-            fr = float(received['fr'])
-            is_global = received['is_global']
-        else:
-            return None
+            if is_global:
+                data_set_type = 'global_data_sets'
+            else:
+                data_set_type = 'data_sets'
 
-        if is_global:
-            data_set_type = 'global_data_sets'
-        else:
-            data_set_type = 'data_sets'
+            # check if the data set name already exists
+            check_if_exists = self.data_handler.check_if_exists(data_set_type, data_set_name)
+            if check_if_exists:
+                return None
+            # Import csv file
+            self.data_handler.import_csv(file_dir=file_dir, data_name=data_set_name, sampling_rate=fr, data_set_type=data_set_type)
 
-        # check if the data set name already exists
-        check_if_exists = self.data_handler.check_if_exists(data_set_type, data_set_name)
-        if check_if_exists:
-            return None
-        # Import csv file
-        self.data_handler.import_csv(file_dir=file_dir, data_name=data_set_name, sampling_rate=fr, data_set_type=data_set_type)
-
-        # Add new data set to the list in the GUI
-        self.add_data_set_to_list(data_set_type, data_set_name)
+            # Add new data set to the list in the GUI
+            self.add_data_set_to_list(data_set_type, data_set_name)
 
     def add_data_set_to_list(self, data_set_type, data_set_name):
         # row = self.gui.data_sets_list.count()
@@ -546,6 +595,18 @@ class Controller(QObject):
     # ==================================================================================================================
     # MOUSE AND KEY PRESS HANDLING
     # ------------------------------------------------------------------------------------------------------------------
+    def on_key_press(self, event):
+        if event.key() == Qt.Key.Key_Left:
+            # left arrow key
+            self.prev_roi()
+        elif event.key() == Qt.Key.Key_Right:
+            # right arrow key
+            self.next_roi()
+        # elif event.key() == Qt.Key.Key_Up:
+        #     # Call your function for up arrow key
+        # elif event.key() == Qt.Key.Key_Down:
+        #     # Call your function for down arrow key
+
     def closeEvent(self, event):
         retval = self.gui.exit_dialog()
 

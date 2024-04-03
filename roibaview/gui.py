@@ -1,8 +1,8 @@
-from PyQt6.QtGui import QFont, QAction, QContextMenuEvent
+from PyQt6.QtGui import QFont, QAction, QColor
 from PyQt6.QtCore import pyqtSignal, Qt, QEvent
 from PyQt6.QtWidgets import QMainWindow, QPushButton, QWidget, QLabel, QVBoxLayout, \
     QMessageBox, QHBoxLayout, QSlider, QComboBox, QToolBar, QListWidget, QListWidgetItem, QFileDialog, QInputDialog, \
-    QScrollArea, QMenu, QLineEdit, QDialog, QCheckBox, QDialogButtonBox
+    QScrollArea, QMenu, QLineEdit, QDialog, QCheckBox, QDialogButtonBox, QColorDialog
 import pyqtgraph as pg
 import os
 
@@ -40,10 +40,10 @@ class MainWindow(QMainWindow):
         # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         # Create Widgets
         # Create Plotting Area
-        self.plot_graphics_layout_widget = pg.GraphicsLayoutWidget(show=False, title="Ca Imaging")
+        self.plot_graphics_layout_widget = pg.GraphicsLayoutWidget(show=False, title='')
 
         # Data Plot
-        self.trace_plot_item = self.plot_graphics_layout_widget.addPlot(title='Ca Data', clear=True, name='data')
+        self.trace_plot_item = self.plot_graphics_layout_widget.addPlot(title='', clear=True, name='data')
         self.trace_plot_item.hideButtons()
 
         # Dataset List
@@ -73,6 +73,8 @@ class MainWindow(QMainWindow):
         self.data_sets_list_context_menu.addSeparator()
         self.data_sets_list_to_z_score = self.data_sets_list_context_menu.addAction("z-score")
         self.data_sets_list_to_df_f = self.data_sets_list_context_menu.addAction("delta F over F")
+        self.data_sets_list_to_min_max = self.data_sets_list_context_menu.addAction("min max")
+
         self.data_sets_list_context_menu.addSeparator()
         self.filter_menu = self.data_sets_list_context_menu.addMenu('Filter')
         self.filter_moving_average = self.filter_menu.addAction("Moving Average")
@@ -80,6 +82,11 @@ class MainWindow(QMainWindow):
         self.filter_lowpass = self.filter_menu.addAction("Low Pass")
         self.filter_highpass = self.filter_menu.addAction("High Pass")
         self.filter_envelope = self.filter_menu.addAction("Envelope")
+
+        self.data_sets_list_context_menu.addSeparator()
+        self.style_menu = self.data_sets_list_context_menu.addMenu('Style')
+        self.style_color = self.style_menu.addAction("Change Color")
+        self.style_lw = self.style_menu.addAction("Line Width")
 
         # Connect right-click event to show context menu
         self.data_sets_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -103,7 +110,7 @@ class MainWindow(QMainWindow):
         self.mouse_label = QLabel(f"<p style='color:black'>X： {0} <br> Y: {0}</p>")
 
         # Info Label
-        self.info_label = QLabel('Please Open Data File ...')
+        self.info_label = QLabel('')
         self.info_frame_rate = QLabel('')
 
         # ROI Selection Drop Down
@@ -358,22 +365,24 @@ class MessageBox:
 class SimpleInputDialog(QDialog):
     """
     That's how you call it:
-        dialog = InputDialog(title='Settings', text='Please enter some stuff: ')
+        dialog = SimpleInputDialog(title='Settings', text='Please enter some stuff: ')
         if dialog.exec() == QDialog.DialogCode.Accepted:
             received = dialog.get_input()
         else:
             return None
     """
-    def __init__(self, title, text,  parent=None):
+    def __init__(self, title, text, default_value=0,  parent=None):
         super().__init__(parent)
         self.title = title
         self.text = text
+        self.default_value = default_value
 
         self.setWindowTitle(self.title)
         layout = QVBoxLayout()
 
         # Create input fields
         self.user_input = QLineEdit()
+        self.user_input.setText(str(self.default_value))
 
         # Add labels
         layout.addWidget(QLabel(self.text))
@@ -394,3 +403,22 @@ class SimpleInputDialog(QDialog):
         buttonBox.accepted.connect(self.accept)
         buttonBox.rejected.connect(self.reject)
         layout.addWidget(buttonBox)
+
+
+class ChangeStyle(QWidget):
+    def __init__(self):
+        super().__init__()
+
+    def get_color(self):
+        color = QColorDialog.getColor()
+        if color.isValid():
+            print(f"Selected color: {color.name()}")
+        return color.name()
+
+    def get_lw(self):
+        dialog = SimpleInputDialog(title='Settings', text='Line Width: ')
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            return float(dialog.get_input())
+        else:
+            return None
+
