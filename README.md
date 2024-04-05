@@ -20,7 +20,7 @@ pip install tifffile
 ```
 Or you can use the "conda_env.yml" file to create an anaconda environment like this:<br>
 Open you anaconda prompt (terminal) and navigate to the location of the "conda_env.yml" file.<br>
-Then type:
+Then type:<br>
 
 ```shell
 conda env create -f conda_env.yml
@@ -30,18 +30,18 @@ Don't forget to activate your new environment:
 conda activate viewer
 ```
 
-To start the Viewer, open your <i>terminal</i> of choice and go to the directory containing the files.
-Then run "main.py":
+To start the Viewer, open your <i>terminal</i> of choice and go to the directory containing the files.<br>
+Then run "main.py":<br>
 
 ```shell
 python main.py
 ```
 
 ## Import Data
-You can import data from .csv files (comma separated).\
-<i>File --> Import csv file ...</i>\
+You can import data from .csv files (comma separated).<br>
+<i>File --> Import csv file ...</i><br>
 
-The file has to have the following structure (with or without header, both works):\
+The file has to have the following structure (with or without header, both works):<br>
 | ROI_1         | ROI_2         | ... | ROI_n         |
 |---------------|---------------|-----|---------------|
 | x<sub>0</sub> | x<sub>0</sub> |     | x<sub>0</sub> |
@@ -49,13 +49,13 @@ The file has to have the following structure (with or without header, both works
 | : .           | : .           |     | : .           |
 | x<sub>n</sub> | x<sub>n</sub> |     | x<sub>n</sub> |
 
-Everytime you import a csv file you will be asked to enter the sampling rate in Hz.
+Everytime you import a csv file you will be asked to enter the sampling rate in Hz.<br>
 
 If the data file does not contain ROI based data, but traces that are the same for all ROIs (global) you can check the
-"global data set" setting. Each Column will be treated as a data trace.
+"global data set" setting. Each Column will be treated as a data trace.<br>
 
-The Viewer can only import files using "comma" (,) as separator. You can convert files using different separators like this:
-<i>Tools --> Convert csv files</i>
+The Viewer can only import files using "comma" (,) as separator. You can convert files using different separators like this:<br>
+<i>Tools --> Convert csv files</i><br>
 - Select the File
 - Specify the separator of this file
 - Specify the desired separator for the output file
@@ -72,14 +72,14 @@ By clicking on "Export" you can save a .csv file containing information about th
 
 
 ## Video Viewer
-You can use the "Video Viewer" to display videos or tiff stacks.
-<i>Tools --> Open Video Viewer </i>
-A new window will pop up.
+You can use the "Video Viewer" to display videos or tiff stacks.<br>
+<i>Tools --> Open Video Viewer </i><br>
+A new window will pop up.<br>
 By clicking on "Connect to Data" you can connect the video with the plotted data to align them.
 
 ## Video Converter
-RoiBaViewer provides a video converter based on ffmpeg (ffmpy).
-<i>Tools --> Open Video Converter </i>
+RoiBaViewer provides a video converter based on ffmpeg (ffmpy).<br>
+<i>Tools --> Open Video Converter </i><br>
 To use it you must have "ffmpeg" installed.
 You can visit https://ffmpeg.org/ to get it.
 First time you open the video converter it will ask you to specify the directory of the ffmpeg.exe.
