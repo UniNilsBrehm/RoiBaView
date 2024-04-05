@@ -73,13 +73,13 @@ By clicking on "Export" you can save a .csv file containing information about th
 
 ## Video Viewer
 You can use the "Video Viewer" to display videos or tiff stacks.
-<i>Tools --> Open Video Viewer/i>
+<i>Tools --> Open Video Viewer </i>
 A new window will pop up.
 By clicking on "Connect to Data" you can connect the video with the plotted data to align them.
 
 ## Video Converter
 RoiBaViewer provides a video converter based on ffmpeg (ffmpy).
-<i>Tools --> Open Video Converter/i>
+<i>Tools --> Open Video Converter </i>
 To use it you must have "ffmpeg" installed. 
 You can visit https://ffmpeg.org/ to get it.
 First time you open the video converter it will ask you to specify the directory of the ffmpeg.exe.
