@@ -1,5 +1,7 @@
+import os
 import numpy as np
 import pandas as pd
+import configparser
 from PyQt6.QtWidgets import QMessageBox, QListWidget, QListWidgetItem, QDialog
 from PyQt6.QtCore import pyqtSignal, QObject, Qt
 from IPython import embed
@@ -10,6 +12,7 @@ from roibaview.peak_detection import PeakDetection
 from roibaview.custom_view_box import CustomViewBoxMenu
 from roibaview.registration import Registrator
 from roibaview.video_viewer import VideoViewer
+from roibaview.video_converter import VideoConverter
 
 
 class Controller(QObject):
@@ -51,6 +54,7 @@ class Controller(QObject):
         # Get a Video Viewer
         self.video_viewer = VideoViewer()
         self.video_viewers = []
+        self.video_converter = None
 
         # Get DataPlotter
         self.data_plotter = DataPlotter(self.gui.trace_plot_item)
@@ -71,12 +75,32 @@ class Controller(QObject):
 
         self.pyqtgraph_settings = PyqtgraphSettings()
 
+        # Create Config File if there is none
+        check = os.listdir('roibaview/')
+        if 'config.ini' not in check:
+            self._create_config_file()
+        else:
+            # load config file
+            self.config = configparser.ConfigParser()
+            self.config.read('roibaview/config.ini')
+
+    def _create_config_file(self):
+        self.config = configparser.ConfigParser()
+
+        self.config['FFMPEG'] = {
+            'dir': 'NaN',
+        }
+
+        with open('roibaview/config.ini', 'w') as configfile:
+            self.config.write(configfile)
+
     def connections(self):
         # File Menu
         self.gui.file_menu_import_csv.triggered.connect(self.import_csv_file)
         self.gui.file_menu_new_viewer_file.triggered.connect(self.new_file)
         self.gui.file_menu_save_viewer_file.triggered.connect(self.save_file)
         self.gui.file_men_open_viewer_file.triggered.connect(self.open_file)
+        self.gui.file_menu_action_exit.triggered.connect(self.gui.close)
 
         # DataSets List
         # Connect item selection changed signal
@@ -118,6 +142,8 @@ class Controller(QObject):
         self.gui.tools_menu_open_video_viewer.triggered.connect(self.open_video_viewer)
         self.video_viewer.TimePoint.connect(self.connect_video_to_plot)
         self.gui.tools_menu_convert_csv.triggered.connect(self.convert_csv_files)
+        # Video Converter
+        self.gui.tools_menu_video_converter.triggered.connect(self.open_video_converter)
 
         # KeyBoard Bindings
         self.gui.key_pressed.connect(self.on_key_press)
@@ -212,6 +238,10 @@ class Controller(QObject):
 
         # self.video_viewer = VideoViewer()
         # self.video_viewer.show()
+
+    def open_video_converter(self):
+        self.video_converter = VideoConverter(self.config)
+        self.video_converter.show()
 
     def time_offset(self):
         if len(self.selected_data_sets) > 0:

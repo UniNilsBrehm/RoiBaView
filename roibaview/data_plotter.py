@@ -1,13 +1,16 @@
 import pyqtgraph as pg
-from IPython import embed
+# from IPython import embed
 
 
 class PyqtgraphSettings:
     # Global pyqtgraph settings
     pg.setConfigOption('background', pg.mkColor('w'))
     pg.setConfigOption('foreground', pg.mkColor('k'))
-    # pg.setConfigOption('useOpenGL', True)
+    pg.setConfigOption('useOpenGL', False)
     pg.setConfigOption('antialias', False)
+    pg.setConfigOption('useNumba', False)
+    pg.setConfigOption('enableExperimental', False)
+    pg.setConfigOption('leftButtonPan', True)
     pg.setConfigOption('imageAxisOrder', 'row-major')
 
 

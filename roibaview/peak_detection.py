@@ -3,7 +3,7 @@ import numpy as np
 from PyQt6.QtCore import pyqtSignal, QObject, Qt
 from PyQt6.QtWidgets import QVBoxLayout, QSlider, QLabel, QWidget, QSpacerItem, QSizePolicy, QMessageBox, QDialog, QPushButton
 from scipy import signal
-from IPython import embed
+# from IPython import embed
 from roibaview.gui import BrowseFileDialog
 import pandas as pd
 

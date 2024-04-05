@@ -174,9 +174,9 @@ class MainWindow(QMainWindow):
         # Tools Menu
         self.tools_menu = self.menu.addMenu('Tools')
         self.tools_menu_open_video_viewer = self.tools_menu.addAction('Open Video Viewer')
-        self.tools_menu_multiplot = self.tools_menu.addAction('Multi Plot')
+        # self.tools_menu_multiplot = self.tools_menu.addAction('Multi Plot')
         self.tools_menu_video_converter = self.tools_menu.addAction('Convert Video File')
-        self.tools_menu_registration = self.tools_menu.addAction('Registration')
+        # self.tools_menu_registration = self.tools_menu.addAction('Registration')
         self.tools_menu_convert_csv = self.tools_menu.addAction('Convert csv files')
 
     def show_context_menu(self, pos):

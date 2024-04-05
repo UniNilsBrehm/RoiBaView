@@ -3,8 +3,7 @@ import shutil
 import numpy as np
 import pandas as pd
 from PyQt6.QtCore import pyqtSignal, QObject
-from PyQt6.QtWidgets import QMessageBox
-from IPython import embed
+# from IPython import embed
 from scipy import signal
 from roibaview.gui import MessageBox
 

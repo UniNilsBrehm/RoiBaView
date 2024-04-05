@@ -4,8 +4,10 @@ dependencies:
   - numpy
   - pandas
   - scipy
+  - ipython
   - pip
   - pip:
+    - h5py
     - PyQt6
     - pyqtgraph
     - opencv-python
