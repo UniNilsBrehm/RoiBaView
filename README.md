@@ -38,10 +38,10 @@ python main.py
 ```
 
 ## Import Data
-You can import data from .csv files (comma separated).
-<i>File --> Import csv file ...</i>
+You can import data from .csv files (comma separated).\
+<i>File --> Import csv file ...</i>\
 
-The file has to have the following structure (with or without header, both works):
+The file has to have the following structure (with or without header, both works):\
 | ROI_1         | ROI_2         | ... | ROI_n         |
 |---------------|---------------|-----|---------------|
 | x<sub>0</sub> | x<sub>0</sub> |     | x<sub>0</sub> |
@@ -54,35 +54,35 @@ Everytime you import a csv file you will be asked to enter the sampling rate in 
 If the data file does not contain ROI based data, but traces that are the same for all ROIs (global) you can check the
 "global data set" setting. Each Column will be treated as a data trace.
 
-The Viewer can only import files using "comma" (,) as separator. You can convert files using different separators like this:
+The Viewer can only import files using "comma" (,) as separator. You can convert files using different separators like this:\
 <i>Tools --> Convert csv files</i>
 - Select the File
 - Specify the separator of this file
 - Specify the desired separator for the output file
 
 ## Plotting Data
-If you successfully imported a new data set, it will be displayed in the list on the left side of the main window.
+If you successfully imported a new data set, it will be displayed in the list on the left side of the main window.\
 By left-clicking on the data set, you can activate it. Right-clicking will open up a context menu with several options for
 modifying this data set.
 
 ## Peak Detection
-If you have activated a data set, you can press on "Detect Peaks" to start the peak detection mode.
-A range of different settings will appear and a live detection will be shown in the main window.
-By clicking on "Export" you can save a .csv file containing information about the detected peaks of this trace.
+If you have activated a data set, you can press on "Detect Peaks" to start the peak detection mode.\
+A range of different settings will appear and a live detection will be shown in the main window.\
+By clicking on "Export" you can save a .csv file containing information about the detected peaks of this trace.\
 
 
 ## Video Viewer
-You can use the "Video Viewer" to display videos or tiff stacks.
-<i>Tools --> Open Video Viewer </i>
-A new window will pop up.
-By clicking on "Connect to Data" you can connect the video with the plotted data to align them.
+You can use the "Video Viewer" to display videos or tiff stacks.\
+<i>Tools --> Open Video Viewer </i>\
+A new window will pop up.\
+By clicking on "Connect to Data" you can connect the video with the plotted data to align them.\
 
 ## Video Converter
-RoiBaViewer provides a video converter based on ffmpeg (ffmpy).
-<i>Tools --> Open Video Converter </i>
-To use it you must have "ffmpeg" installed. 
-You can visit https://ffmpeg.org/ to get it.
-First time you open the video converter it will ask you to specify the directory of the ffmpeg.exe.
+RoiBaViewer provides a video converter based on ffmpeg (ffmpy).\
+<i>Tools --> Open Video Converter </i>\
+To use it you must have "ffmpeg" installed.\
+You can visit https://ffmpeg.org/ to get it.\
+First time you open the video converter it will ask you to specify the directory of the ffmpeg.exe.\
 
 
 ### ----------
