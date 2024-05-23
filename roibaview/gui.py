@@ -212,7 +212,7 @@ class BrowseFileDialog(QFileDialog):
         QFileDialog.__init__(self)
         self.master = main_gui
         self.default_dir = 'C:/'
-        self.file_format = 'csv file, (*.csv)'
+        # self.file_format = 'csv file, (*.csv)'
 
     def browse_file(self, file_format):
         file_dir = self.getOpenFileName(self.master, 'Open File', self.default_dir, file_format)[0]

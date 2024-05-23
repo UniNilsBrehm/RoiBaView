@@ -532,7 +532,7 @@ class Controller(QObject):
 
     def import_csv_file(self):
         # Get file dir
-        file_dir = self.file_browser.browse_file('csv file, (*.csv)')
+        file_dir = self.file_browser.browse_file('csv file, (*.csv *.txt)')
         if file_dir:
             # Get data set name by user
             # dialog = ImportCsvDialog()

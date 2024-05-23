@@ -1,9 +1,9 @@
 # ignore ALL .log files
 *.log
 *.idea
+*.hdf5
 
 # ignore ALL files in ANY directory named temp
-temp 
 .idea
 __pycache__
 temp/ 

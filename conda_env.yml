@@ -7,9 +7,9 @@ dependencies:
   - ipython
   - pip
   - pip:
+    - tifffile
     - h5py
     - PyQt6
     - pyqtgraph
     - opencv-python
     - ffmpy
-    - tifffile
