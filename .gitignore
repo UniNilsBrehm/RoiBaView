@@ -3,9 +3,8 @@
 *.idea
 *.hdf5
 
-# ignore ALL files in ANY directory named temp
+# ignore ALL files in ANY directory named...
 .idea
 __pycache__
-temp/ 
 .idea/
 __pycache__/
