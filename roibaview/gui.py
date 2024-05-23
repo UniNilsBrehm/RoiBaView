@@ -68,6 +68,8 @@ class MainWindow(QMainWindow):
         self.data_sets_list_context_menu = QMenu()
         self.data_sets_list_rename = self.data_sets_list_context_menu.addAction("rename")
         self.data_sets_list_delete = self.data_sets_list_context_menu.addAction("delete")
+        self.data_sets_list_export = self.data_sets_list_context_menu.addAction("export")
+
         self.data_sets_list_context_menu.addSeparator()
         self.data_sets_list_time_offset = self.data_sets_list_context_menu.addAction("time offset")
         self.data_sets_list_context_menu.addSeparator()
@@ -87,6 +89,7 @@ class MainWindow(QMainWindow):
         self.style_menu = self.data_sets_list_context_menu.addMenu('Style')
         self.style_color = self.style_menu.addAction("Change Color")
         self.style_lw = self.style_menu.addAction("Line Width")
+
 
         # Connect right-click event to show context menu
         self.data_sets_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -178,6 +181,8 @@ class MainWindow(QMainWindow):
         self.tools_menu_video_converter = self.tools_menu.addAction('Convert Video File')
         # self.tools_menu_registration = self.tools_menu.addAction('Registration')
         self.tools_menu_convert_csv = self.tools_menu.addAction('Convert csv files')
+        self.tools_menu_convert_ventral_root = self.tools_menu.addAction('Convert Ventral Root Files')
+        self.tools_menu_create_stimulus = self.tools_menu.addAction('Create Stimulus From File')
 
     def show_context_menu(self, pos):
         # Show context menu at the position of the mouse cursor
@@ -226,6 +231,9 @@ class BrowseFileDialog(QFileDialog):
         self.default_dir = os.path.split(file_dir)[0]
         return file_dir
 
+    def browse_directory(self):
+        return self.getExistingDirectory()
+
 
 class InputDialog(QDialog):
     def __init__(self, dialog_type,  parent=None):
@@ -242,6 +250,8 @@ class InputDialog(QDialog):
             self._set_gui_butter_filter_dialog()
         elif self.dialog_type == 'rename':
             self._set_gui_rename_data_set()
+        elif self.dialog_type == 'stimulus':
+            self._set_gui_stimulus_dialog()
 
     def get_input(self):
         # Return the entered settings
@@ -264,6 +274,22 @@ class InputDialog(QDialog):
         # Add labels
         layout.addWidget(QLabel("Window for moving average [s]:"))
         layout.addWidget(self.fields['window'])
+
+        # Add OK and Cancel buttons
+        self.add_ok_cancel_buttons(layout)
+        self.setLayout(layout)
+
+    def _set_gui_stimulus_dialog(self):
+        self.setWindowTitle("Settings")
+
+        layout = QVBoxLayout()
+
+        # Create input fields
+        self.fields['name'] = QLineEdit()
+
+        # Add labels
+        layout.addWidget(QLabel("Name: "))
+        layout.addWidget(self.fields['name'])
 
         # Add OK and Cancel buttons
         self.add_ok_cancel_buttons(layout)

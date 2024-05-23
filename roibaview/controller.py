@@ -118,6 +118,7 @@ class Controller(QObject):
         # Context Menu
         self.gui.data_sets_list_rename.triggered.connect(self.rename_data_set)
         self.gui.data_sets_list_delete.triggered.connect(self.delete_data_set)
+        self.gui.data_sets_list_export.triggered.connect(self.export_to_csv)
         self.gui.data_sets_list_time_offset.triggered.connect(self.time_offset)
         self.gui.data_sets_list_to_df_f.triggered.connect(lambda: self.context_menu('df_f'))
         self.gui.data_sets_list_to_z_score.triggered.connect(lambda: self.context_menu('z'))
@@ -144,9 +145,101 @@ class Controller(QObject):
         self.gui.tools_menu_convert_csv.triggered.connect(self.convert_csv_files)
         # Video Converter
         self.gui.tools_menu_video_converter.triggered.connect(self.open_video_converter)
+        # Convert Ventral Root
+        self.gui.tools_menu_convert_ventral_root.triggered.connect(self.convert_ventral_root)
+        # Create Stimulus from File
+        self.gui.tools_menu_create_stimulus.triggered.connect(self.create_stimulus_from_file)
 
         # KeyBoard Bindings
         self.gui.key_pressed.connect(self.on_key_press)
+
+    def export_to_csv(self):
+        file_dir = self.file_browser.save_file_name('csv file, (*.csv *.txt)')
+        if file_dir:
+            if len(self.selected_data_sets) > 1:
+                dlg = QMessageBox()
+                dlg.setWindowTitle('ERROR')
+                dlg.setText(f'You cannot export multiple data sets at once!')
+                button = dlg.exec()
+                if button == QMessageBox.StandardButton.Ok:
+                    return None
+            if len(self.selected_data_sets) == 0:
+                return None
+
+            # Export selected data set to csv
+            data_set_name, data_set_type, data_set_item = self.get_selected_data_sets(0)
+            # meta_data = self.data_handler.get_data_set_meta_data(data_set_type=data_set_type, data_set_name=data_set_name)
+            df = pd.DataFrame(self.data_handler.get_data_set(data_set_type=data_set_type, data_set_name=data_set_name))
+            df.to_csv(file_dir, index=False, header=False)
+
+    def create_stimulus_from_file(self):
+        file_dir = self.file_browser.browse_file('csv file, (*.csv *.txt)')
+        if file_dir:
+            dialog = InputDialog(dialog_type='stimulus')
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                # name
+                received = dialog.get_input()
+                data_set_name = received['name']
+            else:
+                return None
+
+            protocol = pd.read_csv(file_dir)
+            t_max = max(protocol.max())
+            # t0 = 0
+            fr = 100
+            stimulus = np.zeros(int(fr * t_max))
+            for on, off in zip(protocol.iloc[:, 0], protocol.iloc[:, 1]):
+                start = int(on * fr)
+                end = int(off * fr)
+                stimulus[start:end] = 1
+
+            # Prepare it for hdf5 matrix form
+            stimulus = list(stimulus[:, np.newaxis])
+            data_set_type = 'global_data_sets'
+            # Add stimulus to data sets
+            self.data_handler.add_new_data_set(
+                data_set_type=data_set_type,
+                data_set_name=data_set_name,
+                data=stimulus,
+                sampling_rate=fr,
+                time_offset=0,
+                header='Stimulus')
+
+            # Add new data set to the list in the GUI
+            self.add_data_set_to_list(data_set_type, data_set_name)
+
+    def convert_ventral_root(self):
+        from joblib import Parallel, delayed
+        from roibaview.ventral_root import transform_ventral_root_parallel, pickle_stuff
+        store_to_dict = False
+        vr_rec_dur = 60  # in secs
+        vr_fr = 10000  # in Hz
+
+        # Get directory
+        file_dir = self.file_browser.browse_directory()
+        save_dir = file_dir
+        if file_dir:
+            print(f'Ventral Root Recording Files in: {file_dir}')
+            print(f'Store result to: {save_dir}')
+            print('++++ START PROCESSING +++')
+            print('This can take some time ...')
+            print( 'This relies heavily on CPU, RAM and HDD. HDD is normally the bottleneck, so make sure to use a fast one!')
+            print('... Please Wait ...')
+            print('')
+            # Process all sweeps in parallel
+            sweep_numbers = os.listdir(file_dir)
+            results = Parallel(n_jobs=-2)(delayed(
+                transform_ventral_root_parallel)(save_dir, file_dir, vr_rec_dur, vr_fr, i) for i in
+                                          sweep_numbers)
+            if store_to_dict:
+                print('STORING DICT TO HDD')
+                vr_recordings = dict()
+                for res in results:
+                    sw = list(res.keys())[0]
+                    vr_recordings[sw] = res[sw]
+                pickle_stuff(f'{save_dir}/all_ventral_root.pickle', data=vr_recordings)
+
+            print('++++ FINISHED PROCESSING ++++')
 
     def pick_lw(self):
         if len(self.selected_data_sets) > 1:
@@ -183,7 +276,7 @@ class Controller(QObject):
         self.update_plots(change_global=True)
 
     def convert_csv_files(self):
-        file_dir = self.file_browser.browse_file('csv file, (*.csv, *.txt)')
+        file_dir = self.file_browser.browse_file('csv file, (*.csv *.txt)')
         if file_dir:
             dialog = SimpleInputDialog('Convert csv file', 'Please enter delimiter of input file: ')
             # if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -642,6 +735,7 @@ class Controller(QObject):
 
         if retval == QMessageBox.StandardButton.Save:
             # Save before exit
+            self.save_file()
             event.accept()
             if self.peak_detection is not None:
                 self.peak_detection.main_window_closing.emit()

@@ -94,8 +94,8 @@ class DataHandler(QObject):
             if data_set_name in f[data_set_type]:
                 print('Delete:')
                 print(f[data_set_type][data_set_name])
-                f[data_set_type][data_set_name][:] = 0
-                # del f[data_set_type][data_set_name]
+                # f[data_set_type][data_set_name][:] = 0
+                del f[data_set_type][data_set_name]
 
     def rename_data_set(self, data_set_type, data_set_name, new_name):
         with h5py.File(self.temp_file_name, 'r+') as f:

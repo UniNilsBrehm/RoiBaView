@@ -67,7 +67,6 @@ class DataPlotter:
     def update_global(self, time_axis, data, meta_data=None):
         # self.clear_global_data()
         self.clear_plot_data(name='global')
-
         cc = 0
         for t, y_data in zip(time_axis, data):
             # Each column in global data set can be a trace
