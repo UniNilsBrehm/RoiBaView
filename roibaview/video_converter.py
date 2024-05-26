@@ -50,6 +50,9 @@ class VideoConverter(QMainWindow):
         self.rescale_button = QPushButton("Rescale Video")
         self.rescale_button.clicked.connect(self.rescale_video)
 
+        self.batch_button = QPushButton("Batch Processing ...")
+        self.batch_button.clicked.connect(self.batch_processing)
+
         self.change_ffmpeg_dir_button = QPushButton("Set ffmpeg directory")
         self.change_ffmpeg_dir_button.clicked.connect(self.browse_file_ffmpeg)
 
@@ -75,9 +78,13 @@ class VideoConverter(QMainWindow):
         supress_terminal_output_layout.addWidget(self.supress_terminal_output_check_box)
 
         self.quality_combo_box = QComboBox()
-        self.quality_combo_box.addItem('superfast')
-        self.quality_combo_box.addItem('medium')
+        self.quality_combo_box.addItem('veryslow')
         self.quality_combo_box.addItem('slower')
+        self.quality_combo_box.addItem('slow')
+        self.quality_combo_box.addItem('medium')
+        self.quality_combo_box.addItem('fast')
+        self.quality_combo_box.addItem('faster')
+        self.quality_combo_box.addItem('veryfast')
         self.quality_combo_box_label = QLabel('Compression Preset')
 
         self.constant_rate_factor = QDoubleSpinBox()
@@ -119,6 +126,9 @@ class VideoConverter(QMainWindow):
         layout.addSpacing(10)
         layout.addWidget(self.rescale_button)
         layout.addSpacing(10)
+        layout.addWidget(self.batch_button)
+        layout.addSpacing(10)
+
         layout.addWidget(self.status_label)
 
         # Set the central widget and window properties
@@ -130,6 +140,25 @@ class VideoConverter(QMainWindow):
         self.ffmpeg_dir = self.settings['FFMPEG']['dir']
         self.ffmpeg_probe = f'{os.path.split(self.ffmpeg_dir)[0]}/ffprobe.exe'
         self._define_ffmpeg_settings()
+
+    def batch_processing(self):
+        input_dir = QFileDialog.getExistingDirectory(self)
+        if input_dir:
+            # Get Files
+            print("")
+            print("++++ BATCH PROCESSING ++++")
+            print("")
+            self.input_file_label.setText("Batch Processing ...")
+            file_list = os.listdir(input_dir)
+            for f_name in file_list:
+                self.input_file = f'{input_dir}/{f_name}'
+                self.output_file = f'{input_dir}/{f_name[:-4]}_batch.mp4'
+                print(f"++++ STARTING: {self.input_file} ++++")
+                self._define_ffmpeg_settings()
+                self.please_wait_status()
+                QApplication.processEvents()
+                self.convert_video(self.input_file, self.output_file)
+                self.finished_status()
 
     def convert_to_tiff_stack(self):
         input_video = self.input_file
@@ -230,8 +259,22 @@ class VideoConverter(QMainWindow):
     def get_gpu_state(self):
         if self.gpu_check_box.checkState() == Qt.CheckState.Checked:
             self.use_gpu = True
+            # change presets
+            self.quality_combo_box.clear()
+            self.quality_combo_box.addItem('slow')
+            self.quality_combo_box.addItem('medium')
+            self.quality_combo_box.addItem('fast')
         else:
             self.use_gpu = False
+            # change presets
+            self.quality_combo_box.clear()
+            self.quality_combo_box.addItem('veryslow')
+            self.quality_combo_box.addItem('slower')
+            self.quality_combo_box.addItem('slow')
+            self.quality_combo_box.addItem('medium')
+            self.quality_combo_box.addItem('fast')
+            self.quality_combo_box.addItem('faster')
+            self.quality_combo_box.addItem('veryfast')
 
     def get_supress_state(self):
         if self.supress_terminal_output_check_box.checkState() == Qt.CheckState.Checked:
@@ -342,9 +385,9 @@ class VideoConverter(QMainWindow):
         self.browse_button.setDisabled(False)
         self.change_ffmpeg_dir_button.setDisabled(False)
         if not self.supress_terminal_output:
-            print('')
-            print('++++ FINISHED ++++')
-            print('')
+            print("")
+            print(f"++++ FINISHED: {os.path.split(self.input_file)[1]} --> {os.path.split(self.output_file)[1]} ++++")
+            print("")
 
     def browse_files(self):
         input_file, _ = QFileDialog.getOpenFileName(
