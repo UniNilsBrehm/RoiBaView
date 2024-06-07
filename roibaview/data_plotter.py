@@ -79,14 +79,18 @@ class DataPlotter:
                     color = '#000000'  # black
                     lw = 1
                 # Create new  plot item
-                plot_data_item = pg.PlotDataItem(
-                    t, y,
-                    pen=pg.mkPen(color=color, width=lw),
-                    name=f'global_{cc}',
-                    skipFiniteCheck=True,
-                    tip=None,
-                )
-
+                try:
+                    plot_data_item = pg.PlotDataItem(
+                        t, y,
+                        pen=pg.mkPen(color=color, width=lw),
+                        name=f'global_{cc}',
+                        skipFiniteCheck=True,
+                        tip=None,
+                    )
+                except TypeError:
+                    from IPython import embed
+                    embed()
+                    exit()
                 # Add plot item to the plot widget
                 self.master_plot.addItem(plot_data_item)
                 cc += 1

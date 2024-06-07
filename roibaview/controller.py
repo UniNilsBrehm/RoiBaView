@@ -4,11 +4,11 @@ import pandas as pd
 import configparser
 from PyQt6.QtWidgets import QMessageBox, QListWidget, QListWidgetItem, QDialog
 from PyQt6.QtCore import pyqtSignal, QObject, Qt
-from IPython import embed
 from roibaview.data_handler import DataHandler, TransformData
 from roibaview.gui import BrowseFileDialog, InputDialog, SimpleInputDialog, ChangeStyle
 from roibaview.data_plotter import DataPlotter, PyqtgraphSettings
 from roibaview.peak_detection import PeakDetection
+from roibaview.ventral_root_detection import VentralRootDetection
 from roibaview.custom_view_box import CustomViewBoxMenu
 from roibaview.registration import Registrator
 from roibaview.video_viewer import VideoViewer
@@ -64,6 +64,9 @@ class Controller(QObject):
 
         # Get a Peak Detector
         self.peak_detection = None
+
+        # Get a VR Detector
+        self.vr_detection = None
 
         # Establish Connections to Buttons and Menus
         self.connections()
@@ -149,9 +152,29 @@ class Controller(QObject):
         self.gui.tools_menu_convert_ventral_root.triggered.connect(self.convert_ventral_root)
         # Create Stimulus from File
         self.gui.tools_menu_create_stimulus.triggered.connect(self.create_stimulus_from_file)
+        # Ventral Root Event Detection
+        self.gui.tools_menu_detect_vr.triggered.connect(self._ventral_root_detection)
 
         # KeyBoard Bindings
         self.gui.key_pressed.connect(self.on_key_press)
+
+    def _ventral_root_detection(self):
+        if len(self.selected_data_sets) > 0:
+            self.gui.freeze_gui(True)
+            data_set_name, data_set_type, data_set_item = self.get_selected_data_sets(k=0)
+            current_data_set = self.data_handler.get_data_set(data_set_name=data_set_name, data_set_type=data_set_type)
+            meta_data = self.data_handler.get_data_set_meta_data(data_set_type=data_set_type, data_set_name=data_set_name)
+
+            self.vr_detection = VentralRootDetection(
+                data=current_data_set,
+                fr=meta_data['sampling_rate'],
+                master_plot=self.data_plotter.master_plot,
+                roi=self.current_roi_idx,
+            )
+            self.vr_detection.show()
+            if self.vr_detection.exec() == QDialog.DialogCode.Accepted:
+                self.gui.freeze_gui(False)
+                self.vr_detection = None
 
     def export_to_csv(self):
         file_dir = self.file_browser.save_file_name('csv file, (*.csv *.txt)')
@@ -404,6 +427,8 @@ class Controller(QObject):
     def check_peak_detector(self):
         if self.peak_detection is not None:
             self.peak_detection.roi_changed(self.current_roi_idx)  # This will trigger the signal
+        if self.vr_detection is not None:
+            self.vr_detection.roi_changed(self.current_roi_idx)  # This will trigger the signal
 
     def _start_peak_detection(self):
         if len(self.selected_data_sets) > 0:
@@ -438,8 +463,8 @@ class Controller(QObject):
                 # k = 0
                 data_set_name = self.selected_data_sets[k]
                 data_set_type = self.selected_data_sets_type[k]
-                if data_set_type != 'data_sets':
-                    return None
+                # if data_set_type != 'data_sets':
+                #     return None
                 data = self.data_handler.get_data_set(data_set_type=data_set_type, data_set_name=data_set_name)
                 meta_data = self.data_handler.get_data_set_meta_data(data_set_type=data_set_type, data_set_name=data_set_name)
                 fr = meta_data['sampling_rate']
@@ -489,7 +514,8 @@ class Controller(QObject):
                     else:
                         return None
                     # Get settings by user input
-                    filtered_data = self.data_transformer.envelope(data, cutoff, fs=fr)
+                    # filtered_data = self.data_transformer.envelope(data, cutoff, fs=fr)
+                    filtered_data = self.data_transformer.envelope(data, cutoff, fr)
 
                 if filtered_data is not None:
                     # Create a new data set from this

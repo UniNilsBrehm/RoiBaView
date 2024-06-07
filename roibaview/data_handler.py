@@ -70,6 +70,10 @@ class DataHandler(QObject):
 
         # This needs to be converted to a numpy matrix
         data = data_file.to_numpy()
+
+        # Check dimensions (must match hdf5 style)
+        if data.ndim == 1:
+            data = np.atleast_2d(data)
         # Open the temp hdf5 file and store data set there
         check = self.add_new_data_set(data_set_type, data_name, data, sampling_rate=sampling_rate, time_offset=0, header=headers)
 
@@ -113,6 +117,7 @@ class DataHandler(QObject):
                 data_set_name = data_set_name + '_new'
                 already_exists = True
 
+            # CREATE NEW DATASET
             new_entry = f[data_set_type].create_dataset(data_set_name, data=data)
             if data_set_type == 'global_data_sets':
                 header_name = 'header_names'
@@ -217,6 +222,9 @@ class TransformData(QObject):
         :param data: numpy array (columns: ROIs, rows: data points over time)
         :return: Data set with z-scored values
         """
+        # Check if there is only one ROI (Column)
+        if data.shape[1] == 1:
+            data = data.flatten()
         return (data - np.mean(data, axis=0)) / np.std(data, axis=0)
 
     @staticmethod
@@ -229,8 +237,8 @@ class TransformData(QObject):
         :param window: window size in seconds for computing sliding percentile baseline (if None, no window is used)
         :return:Delta F over F normalized data set
         """
-
         # This is using the pandas rolling method, so we need to convert the data to a DataFrame first
+        from IPython import embed
         df = pd.DataFrame(data)
         if window is None:
             fbs = np.percentile(df, fbs_per, axis=0)
@@ -272,15 +280,15 @@ class TransformData(QObject):
 
     @staticmethod
     def filter_differentiate(data):
-        return np.diff(data, append=0)
+        return np.diff(data, append=0, axis=0)
 
     def filter_low_pass(self, data, cutoff, fs, order=2):
         sos = self.butter_filter_design('lowpass', cutoff, fs, order=order)
-        return signal.sosfiltfilt(sos, data)
+        return signal.sosfiltfilt(sos, data, axis=0)
 
     def filter_high_pass(self, data, cutoff, fs, order=2):
         sos = self.butter_filter_design('highpass', cutoff, fs, order=order)
-        return signal.sosfiltfilt(sos, data)
+        return signal.sosfiltfilt(sos, data, axis=0)
 
     @staticmethod
     def butter_filter_design(filter_type, cutoff, fs, order=2):
@@ -290,9 +298,30 @@ class TransformData(QObject):
             normal_cutoff = 0.9999
         # b, a = signal.butter(order, normal_cutoff, btype=filter_type, analog=False)
         sos = signal.butter(order, normal_cutoff, btype=filter_type, output='sos')
-
         return sos
 
-    def envelope(self, data, lp_cutoff, fs):
-        sos = self.butter_filter_design('lowpass', lp_cutoff, fs=fs)
-        return np.sqrt(2) * signal.sosfiltfilt(sos, np.abs(data))
+    @staticmethod
+    def envelope(data, freq, rate):
+        # Low pass filter the absolute values of the signal in both forward and reverse directions,
+        # resulting in zero-phase filtering.
+        sos = signal.butter(2, freq, 'lowpass', fs=rate, output='sos')
+        env = (np.sqrt(2) * signal.sosfiltfilt(sos, np.abs(data), axis=0)) ** 2
+
+        # Make sure that output has the correct format
+        # env = np.atleast_2d(env)
+        return env
+
+    @staticmethod
+    def prepare_data(data):
+        # Since hdf5 and numpy like their data structured differently, we have to transform it
+        # Check if there is only one ROI (Column)
+        if data.shape[1] == 1:
+            new_data = data.flatten()
+        else:
+            # otherwise transpose it
+            new_data = data.T
+        return new_data
+
+    # def envelope(self, data, lp_cutoff, fs):
+    #     sos = self.butter_filter_design('lowpass', lp_cutoff, fs=fs)
+    #     return np.sqrt(2) * signal.sosfiltfilt(sos, np.abs(data))

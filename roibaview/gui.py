@@ -183,6 +183,7 @@ class MainWindow(QMainWindow):
         self.tools_menu_convert_csv = self.tools_menu.addAction('Convert csv files')
         self.tools_menu_convert_ventral_root = self.tools_menu.addAction('Convert Ventral Root Files')
         self.tools_menu_create_stimulus = self.tools_menu.addAction('Create Stimulus From File')
+        self.tools_menu_detect_vr = self.tools_menu.addAction('Ventral Root Event Detection')
 
     def show_context_menu(self, pos):
         # Show context menu at the position of the mouse cursor
