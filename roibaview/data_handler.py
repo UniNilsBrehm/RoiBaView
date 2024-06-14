@@ -6,6 +6,7 @@ from PyQt6.QtCore import pyqtSignal, QObject
 # from IPython import embed
 from scipy import signal
 from roibaview.gui import MessageBox
+from scipy.signal import decimate, resample
 
 """
 Notes:
@@ -75,7 +76,12 @@ class DataHandler(QObject):
         if data.ndim == 1:
             data = np.atleast_2d(data)
         # Open the temp hdf5 file and store data set there
-        check = self.add_new_data_set(data_set_type, data_name, data, sampling_rate=sampling_rate, time_offset=0, header=headers)
+        check = self.add_new_data_set(
+            data_set_type, data_name, data,
+            sampling_rate=sampling_rate,
+            time_offset=0,
+            y_offset=0,
+            header=headers)
 
     def get_info(self):
         with h5py.File(self.temp_file_name, 'r') as f:
@@ -96,8 +102,8 @@ class DataHandler(QObject):
     def delete_data_set(self, data_set_type, data_set_name):
         with h5py.File(self.temp_file_name, 'r+') as f:
             if data_set_name in f[data_set_type]:
-                print('Delete:')
-                print(f[data_set_type][data_set_name])
+                # print('Delete:')
+                # print(f[data_set_type][data_set_name])
                 # f[data_set_type][data_set_name][:] = 0
                 del f[data_set_type][data_set_name]
 
@@ -107,7 +113,7 @@ class DataHandler(QObject):
                 f[data_set_type][new_name] = f[data_set_type][data_set_name]
                 del f[data_set_type][data_set_name]
 
-    def add_new_data_set(self, data_set_type, data_set_name, data, sampling_rate, time_offset, header=''):
+    def add_new_data_set(self, data_set_type, data_set_name, data, sampling_rate, time_offset, y_offset, header=''):
         # Open the temp hdf5 file and store data set there
         already_exists = False
         with h5py.File(self.temp_file_name, 'r+') as f:
@@ -127,6 +133,7 @@ class DataHandler(QObject):
             new_entry.attrs[header_name] = header
             new_entry.attrs['sampling_rate'] = float(sampling_rate)
             new_entry.attrs['time_offset'] = time_offset
+            new_entry.attrs['y_offset'] = y_offset
             new_entry.attrs['color'] = '#000000'  # black
             new_entry.attrs['lw'] = 1
 
@@ -209,6 +216,17 @@ class TransformData(QObject):
 
     def __init__(self):
         QObject.__init__(self)
+
+    @staticmethod
+    def down_sampling(data, ds_factor, fs):
+        # New sampling rate
+        new_fs = fs / ds_factor
+        # new_samples = int(data.shape[0] / ds_factor)
+        # down_sampled_data = resample(data, new_samples)
+        # Apply decimate function to downsample the data
+        down_sampled_data = decimate(data, ds_factor, axis=0)
+
+        return down_sampled_data, new_fs
 
     @staticmethod
     def compute_time_axis(data_size, fr):

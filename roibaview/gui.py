@@ -72,6 +72,8 @@ class MainWindow(QMainWindow):
 
         self.data_sets_list_context_menu.addSeparator()
         self.data_sets_list_time_offset = self.data_sets_list_context_menu.addAction("time offset")
+        self.data_sets_list_y_offset = self.data_sets_list_context_menu.addAction("y offset")
+
         self.data_sets_list_context_menu.addSeparator()
         self.data_sets_list_to_z_score = self.data_sets_list_context_menu.addAction("z-score")
         self.data_sets_list_to_df_f = self.data_sets_list_context_menu.addAction("delta F over F")
@@ -84,12 +86,12 @@ class MainWindow(QMainWindow):
         self.filter_lowpass = self.filter_menu.addAction("Low Pass")
         self.filter_highpass = self.filter_menu.addAction("High Pass")
         self.filter_envelope = self.filter_menu.addAction("Envelope")
+        self.filter_down_sampling = self.filter_menu.addAction("Down Sampling")
 
         self.data_sets_list_context_menu.addSeparator()
         self.style_menu = self.data_sets_list_context_menu.addMenu('Style')
         self.style_color = self.style_menu.addAction("Change Color")
         self.style_lw = self.style_menu.addAction("Line Width")
-
 
         # Connect right-click event to show context menu
         self.data_sets_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -104,9 +106,9 @@ class MainWindow(QMainWindow):
         self.addToolBar(self.toolbar)
 
         # Detect Peaks
-        self.toolbar_peak_detection = QAction("Detect Peaks", self)
+        # self.toolbar_peak_detection = QAction("Detect Peaks", self)
         # self.toolbar_raw_action.setToolTip("Raw Data (R)")
-        self.toolbar.addAction(self.toolbar_peak_detection)
+        # self.toolbar.addAction(self.toolbar_peak_detection)
 
         # The Mouse Position
         self.layout_labels = QHBoxLayout()
@@ -184,6 +186,7 @@ class MainWindow(QMainWindow):
         self.tools_menu_convert_ventral_root = self.tools_menu.addAction('Convert Ventral Root Files')
         self.tools_menu_create_stimulus = self.tools_menu.addAction('Create Stimulus From File')
         self.tools_menu_detect_vr = self.tools_menu.addAction('Ventral Root Event Detection')
+        self.tools_menu_detect_peaks = self.tools_menu.addAction('Peak Detection')
 
     def show_context_menu(self, pos):
         # Show context menu at the position of the mouse cursor
@@ -253,6 +256,8 @@ class InputDialog(QDialog):
             self._set_gui_rename_data_set()
         elif self.dialog_type == 'stimulus':
             self._set_gui_stimulus_dialog()
+        elif self.dialog_type == 'ds':
+            self._set_gui_ds_dialog()
 
     def get_input(self):
         # Return the entered settings
@@ -263,6 +268,20 @@ class InputDialog(QDialog):
             else:
                 output[k] = self.fields[k].text()
         return output
+
+    def _set_gui_ds_dialog(self):
+        self.setWindowTitle("Settings")
+        layout = QVBoxLayout()
+        # Create input fields
+        self.fields['ds_factor'] = QLineEdit()
+
+        # Add labels
+        layout.addWidget(QLabel("Down Sampling Factor:"))
+        layout.addWidget(self.fields['ds_factor'])
+
+        # Add OK and Cancel buttons
+        self.add_ok_cancel_buttons(layout)
+        self.setLayout(layout)
 
     def _set_gui_moving_average_dialog(self):
         self.setWindowTitle("Settings")
@@ -439,7 +458,8 @@ class ChangeStyle(QWidget):
     def get_color(self):
         color = QColorDialog.getColor()
         if color.isValid():
-            print(f"Selected color: {color.name()}")
+            # print(f"Selected color: {color.name()}")
+            pass
         return color.name()
 
     def get_lw(self):

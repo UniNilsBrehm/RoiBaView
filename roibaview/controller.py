@@ -123,6 +123,7 @@ class Controller(QObject):
         self.gui.data_sets_list_delete.triggered.connect(self.delete_data_set)
         self.gui.data_sets_list_export.triggered.connect(self.export_to_csv)
         self.gui.data_sets_list_time_offset.triggered.connect(self.time_offset)
+        self.gui.data_sets_list_y_offset.triggered.connect(self.y_offset)
         self.gui.data_sets_list_to_df_f.triggered.connect(lambda: self.context_menu('df_f'))
         self.gui.data_sets_list_to_z_score.triggered.connect(lambda: self.context_menu('z'))
         self.gui.data_sets_list_to_min_max.triggered.connect(lambda: self.context_menu('min_max'))
@@ -133,13 +134,11 @@ class Controller(QObject):
         self.gui.filter_lowpass.triggered.connect(lambda: self.filter_data('lowpass'))
         self.gui.filter_highpass.triggered.connect(lambda: self.filter_data('highpass'))
         self.gui.filter_envelope.triggered.connect(lambda: self.filter_data('env'))
+        self.gui.filter_down_sampling.triggered.connect(lambda: self.filter_data('ds'))
 
         # Style Submenu
         self.gui.style_color.triggered.connect(self.pick_color)
         self.gui.style_lw.triggered.connect(self.pick_lw)
-
-        # Peak Detection
-        self.gui.toolbar_peak_detection.triggered.connect(self._start_peak_detection)
 
         # Tools
         # Video Viewer
@@ -154,6 +153,8 @@ class Controller(QObject):
         self.gui.tools_menu_create_stimulus.triggered.connect(self.create_stimulus_from_file)
         # Ventral Root Event Detection
         self.gui.tools_menu_detect_vr.triggered.connect(self._ventral_root_detection)
+        # Peak Detection
+        self.gui.tools_menu_detect_peaks.triggered.connect(self._start_peak_detection)
 
         # KeyBoard Bindings
         self.gui.key_pressed.connect(self.on_key_press)
@@ -226,14 +227,45 @@ class Controller(QObject):
                 data=stimulus,
                 sampling_rate=fr,
                 time_offset=0,
+                y_offset=0,
                 header='Stimulus')
 
             # Add new data set to the list in the GUI
             self.add_data_set_to_list(data_set_type, data_set_name)
 
     def convert_ventral_root(self):
+        """
+        Expects following file structure:
+        └── vr_data
+            ├── sweep_01
+            │   ├── sw_01_01.txt
+            │   ├── sw_01_02.txt
+            │   :
+            │   └── sw_01_n.txt
+            ├── sweep_02
+            :
+            └── sweep_n
+
+        All vr text files from one sweep will then be combined into one meaningful and solid data file (csv)
+        :return:
+        """
         from joblib import Parallel, delayed
         from roibaview.ventral_root import transform_ventral_root_parallel, pickle_stuff
+        file_structure = '''
+        Expects following file structure:
+        └── vr_data
+            ├── sweep_01
+            │   ├── sw_01_01.txt
+            │   ├── sw_01_02.txt
+            │   :
+            │   └── sw_01_n.txt
+            ├── sweep_02
+            :
+            └── sweep_n
+            
+        All vr text files from one sweep will then be combined into one meaningful and solid data file (csv)
+        '''
+
         store_to_dict = False
         vr_rec_dur = 60  # in secs
         vr_fr = 10000  # in Hz
@@ -242,6 +274,10 @@ class Controller(QObject):
         file_dir = self.file_browser.browse_directory()
         save_dir = file_dir
         if file_dir:
+            print('========== VENTRAL ROOT ==========')
+            print('')
+            print(file_structure)
+            print('')
             print(f'Ventral Root Recording Files in: {file_dir}')
             print(f'Store result to: {save_dir}')
             print('++++ START PROCESSING +++')
@@ -359,6 +395,25 @@ class Controller(QObject):
         self.video_converter = VideoConverter(self.config)
         self.video_converter.show()
 
+    def y_offset(self):
+        if len(self.selected_data_sets) > 0:
+            for k, _ in enumerate(self.selected_data_sets):
+                data_set_name = self.selected_data_sets[k]
+                data_set_type = self.selected_data_sets_type[k]
+                meta_data = self.data_handler.get_data_set_meta_data(
+                    data_set_type=data_set_type,
+                    data_set_name=data_set_name
+                )
+
+                # Get settings by user input
+                dialog = SimpleInputDialog('Settings', 'Please enter Y Offset: ', default_value=meta_data['y_offset'])
+                if dialog.exec() == dialog.DialogCode.Accepted:
+                    y_offset = {'y_offset': float(dialog.get_input())}
+                    self.data_handler.add_meta_data(data_set_type, data_set_name, y_offset)
+                    self.update_plots(change_global=True)
+                else:
+                    return None
+
     def time_offset(self):
         if len(self.selected_data_sets) > 0:
             for k, _ in enumerate(self.selected_data_sets):
@@ -395,10 +450,18 @@ class Controller(QObject):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             received = dialog.get_input()
             new_name = received['data_set_name']
-            self.data_handler.rename_data_set(data_set_type=data_set_type, data_set_name=data_set_name, new_name=new_name)
-            # self.remove_selected_data_set_from_list(data_set_name, data_set_item)
-            # self.add_data_set_to_list(data_set_type, new_name)
-            self.rename_item_from_list(data_set_item=data_set_item, new_name=new_name)
+            if new_name != '':
+                self.data_handler.rename_data_set(data_set_type=data_set_type, data_set_name=data_set_name, new_name=new_name)
+                # self.remove_selected_data_set_from_list(data_set_name, data_set_item)
+                # self.add_data_set_to_list(data_set_type, new_name)
+                self.rename_item_from_list(data_set_item=data_set_item, new_name=new_name)
+            else:
+                dlg = QMessageBox()
+                dlg.setWindowTitle('ERROR')
+                dlg.setText(f'Please enter a valid name!')
+                button = dlg.exec()
+                if button == QMessageBox.StandardButton.Ok:
+                    return None
         else:
             return None
 
@@ -439,7 +502,7 @@ class Controller(QObject):
             meta_data = self.data_handler.get_data_set_meta_data(data_set_type=data_set_type, data_set_name=data_set_name)
 
             self.peak_detection = PeakDetection(
-                data=current_data_set,
+                data=current_data_set + meta_data['y_offset'],
                 fr=meta_data['sampling_rate'],
                 master_plot=self.data_plotter.master_plot,
                 roi=self.current_roi_idx,
@@ -460,11 +523,8 @@ class Controller(QObject):
     def filter_data(self, mode):
         if len(self.selected_data_sets) > 0:
             for k, _ in enumerate(self.selected_data_sets):
-                # k = 0
                 data_set_name = self.selected_data_sets[k]
                 data_set_type = self.selected_data_sets_type[k]
-                # if data_set_type != 'data_sets':
-                #     return None
                 data = self.data_handler.get_data_set(data_set_type=data_set_type, data_set_name=data_set_name)
                 meta_data = self.data_handler.get_data_set_meta_data(data_set_type=data_set_type, data_set_name=data_set_name)
                 fr = meta_data['sampling_rate']
@@ -480,7 +540,6 @@ class Controller(QObject):
                     filtered_data = self.data_transformer.filter_moving_average(data, fr=fr, window=win)
 
                 if mode == 'diff':
-                    # Get settings by user input
                     filtered_data = self.data_transformer.filter_differentiate(data)
 
                 if mode == 'lowpass':
@@ -491,7 +550,6 @@ class Controller(QObject):
                         cutoff = float(received['cutoff'])
                     else:
                         return None
-                    # Get settings by user input
                     filtered_data = self.data_transformer.filter_low_pass(data, cutoff, fs=fr)
 
                 if mode == 'highpass':
@@ -502,7 +560,6 @@ class Controller(QObject):
                         cutoff = float(received['cutoff'])
                     else:
                         return None
-                    # Get settings by user input
                     filtered_data = self.data_transformer.filter_high_pass(data, cutoff, fs=fr)
 
                 if mode == 'env':
@@ -513,9 +570,17 @@ class Controller(QObject):
                         cutoff = float(received['cutoff'])
                     else:
                         return None
-                    # Get settings by user input
-                    # filtered_data = self.data_transformer.envelope(data, cutoff, fs=fr)
                     filtered_data = self.data_transformer.envelope(data, cutoff, fr)
+
+                if mode == 'ds':
+                    # Get settings by user input
+                    dialog = InputDialog(dialog_type='ds')
+                    if dialog.exec() == QDialog.DialogCode.Accepted:
+                        received = dialog.get_input()
+                        ds_factor = int(received['ds_factor'])
+                    else:
+                        return None
+                    filtered_data, fr = self.data_transformer.down_sampling(data, ds_factor, fr)
 
                 if filtered_data is not None:
                     # Create a new data set from this
@@ -524,7 +589,8 @@ class Controller(QObject):
                         data_set_name=f'{data_set_name}_{mode}',
                         data=filtered_data,
                         sampling_rate=fr,
-                        time_offset=meta_data['time_offset']
+                        time_offset=meta_data['time_offset'],
+                        y_offset=meta_data['y_offset'],
                     )
                     # Add new data set to the list in the GUI
                     if check:
@@ -571,7 +637,8 @@ class Controller(QObject):
                         data_set_name=f'{data_set_name}_{mode}',
                         data=result,
                         sampling_rate=meta_data['sampling_rate'],
-                        time_offset=meta_data['time_offset']
+                        time_offset=meta_data['time_offset'],
+                        y_offset=meta_data['y_offset']
                     )
                     # Add new data set to the list in the GUI
                     if check:
@@ -608,17 +675,21 @@ class Controller(QObject):
                 r = self.data_handler.get_roi_data(data_set_name, roi_idx=self.current_roi_idx)
                 meta_data = self.data_handler.get_data_set_meta_data('data_sets', data_set_name)
                 fr = meta_data['sampling_rate']
+                # print(f'{data_set_name}: fr={fr} Hz (shape={r.shape[0]}) samples')
                 time_offset = meta_data['time_offset']
+                y_offset = meta_data['y_offset']
                 time_points.append(self.data_transformer.compute_time_axis(r.shape[0], fr) + time_offset)
-                roi_data.append(r)
+
+                roi_data.append(r + y_offset)
                 meta_data_list.append(meta_data)
             if data_set_type == 'global_data_sets' and change_global:
                 r = self.data_handler.get_data_set('global_data_sets', data_set_name)
                 meta_data = self.data_handler.get_data_set_meta_data('global_data_sets', data_set_name)
                 fr = meta_data['sampling_rate']
                 time_offset = meta_data['time_offset']
+                y_offset = meta_data['y_offset']
                 global_time_points.append(self.data_transformer.compute_time_axis(r.shape[0], fr) + time_offset)
-                global_data.append(r)
+                global_data.append(r + y_offset)
                 global_meta_data_list.append(meta_data)
 
         # Update Plot
