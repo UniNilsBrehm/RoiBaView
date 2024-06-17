@@ -136,6 +136,8 @@ class DataHandler(QObject):
             new_entry.attrs['y_offset'] = y_offset
             new_entry.attrs['color'] = '#000000'  # black
             new_entry.attrs['lw'] = 1
+            new_entry.attrs['name'] = data_set_name
+            new_entry.attrs['data_type'] = data_set_type
 
             return already_exists
 
@@ -263,7 +265,8 @@ class TransformData(QObject):
         else:
             per_window = int(window * fr)
             quant = fbs_per / 100
-            fbs = df.rolling(window=per_window, center=True, min_periods=0, axis=0).quantile(quant)
+            # fbs = df.rolling(window=per_window, center=True, min_periods=0, axis=0).quantile(quant)
+            fbs = df.rolling(window=per_window, center=True, min_periods=0).quantile(quant)
 
         df_over_f = (df - fbs) / fbs
         return df_over_f.to_numpy()

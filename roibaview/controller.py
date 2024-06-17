@@ -2,8 +2,11 @@ import os
 import numpy as np
 import pandas as pd
 import configparser
-from PyQt6.QtWidgets import QMessageBox, QListWidget, QListWidgetItem, QDialog
+from datetime import datetime
+from PyQt6.QtWidgets import QMessageBox, QListWidget, QListWidgetItem, QDialog, QApplication
 from PyQt6.QtCore import pyqtSignal, QObject, Qt
+from PyQt6.QtGui import QPen, QBrush, QColor
+import pyqtgraph as pg
 from roibaview.data_handler import DataHandler, TransformData
 from roibaview.gui import BrowseFileDialog, InputDialog, SimpleInputDialog, ChangeStyle
 from roibaview.data_plotter import DataPlotter, PyqtgraphSettings
@@ -31,6 +34,7 @@ class Controller(QObject):
         # Create GUI
         self.gui = gui
         self.gui.closeEvent = self.closeEvent
+        self.mouse_x_pos = 0
 
         # Get a DataHandler
         self.data_handler = DataHandler()
@@ -67,6 +71,10 @@ class Controller(QObject):
 
         # Get a VR Detector
         self.vr_detection = None
+
+        # Set Selection Mode
+        self.signal_selection_status = False
+        self.cut_out_region = None
 
         # Establish Connections to Buttons and Menus
         self.connections()
@@ -158,6 +166,66 @@ class Controller(QObject):
 
         # KeyBoard Bindings
         self.gui.key_pressed.connect(self.on_key_press)
+        self.data_plotter.master_plot.scene().sigMouseClicked.connect(self.on_mouse_click)
+
+    def draw_selection(self, status='start'):
+        if status == 'exit' and self.cut_out_region is not None:
+            self.data_plotter.master_plot.removeItem(self.cut_out_region)
+        else:
+            # Add a LinearRegionItem to select a region
+            self.cut_out_region = pg.LinearRegionItem(
+                [self.mouse_x_pos, self.mouse_x_pos + 10],
+                brush=QBrush(QColor(255, 0, 0, 50)),
+                pen=pg.mkPen(color=(255, 0, 0), width=5),
+                hoverBrush=QBrush(QColor(255, 0, 0, 100)),
+                hoverPen=pg.mkPen(color=(0, 255, 0), width=5),
+                movable=True,
+                bounds=None,
+                swapMode='sort',
+                clipItem=None
+            )
+            self.data_plotter.master_plot.addItem(self.cut_out_region)
+
+    def cut_selection(self):
+        # Get the selected region boundaries
+        if self.cut_out_region is not None:
+
+            # Get tag info from user
+            dialog = SimpleInputDialog('Save Selection', 'Tag:')
+            if dialog.exec() == dialog.DialogCode.Accepted:
+                tag_name = dialog.get_input()
+            else:
+                return None
+
+            min_x, max_x = self.cut_out_region.getRegion()
+
+            # Get all data that is visible on the plot
+            # Prepare Data Frame for csv file
+            results = pd.DataFrame()
+            k = 0
+            for data_set in self.data_plotter.master_plot.listDataItems():
+                column_name = f'{data_set.name()}_{tag_name}'
+                x = data_set.getData()[0]
+                y = data_set.getData()[1]
+
+                if y is not None and x is not None:
+                    # Find the indices of the region
+                    min_idx = np.searchsorted(x, min_x)
+                    max_idx = np.searchsorted(x, max_x)
+
+                    # Extract and store the selected region
+                    if k == 0:
+                        selected_x = x[min_idx:max_idx]
+                        results['Time'] = selected_x
+
+                    selected_y = y[min_idx:max_idx]
+                    results[column_name] = selected_y
+                    k += 1
+
+            # Store to HDD
+            results.to_csv(f'roibaview/temp/{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}_{tag_name}.csv')
+            # Remove Selection Markers from Plot
+            self.data_plotter.master_plot.removeItem(self.cut_out_region)
 
     def _ventral_root_detection(self):
         if len(self.selected_data_sets) > 0:
@@ -815,6 +883,22 @@ class Controller(QObject):
     # ==================================================================================================================
     # MOUSE AND KEY PRESS HANDLING
     # ------------------------------------------------------------------------------------------------------------------
+    def on_mouse_click(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.scenePos()
+            mouse_point = self.data_plotter.master_plot.vb.mapSceneToView(pos)
+            # Get x value (corresponding to time axis)
+            self.mouse_x_pos = mouse_point.x()
+            modifiers = QApplication.keyboardModifiers()
+            if modifiers == Qt.KeyboardModifier.ControlModifier:  # Ctrl key
+                # Enter Cutout Mode
+                if self.signal_selection_status:
+                    self.signal_selection_status = False
+                    self.draw_selection(status='exit')
+                else:
+                    self.draw_selection()
+                    self.signal_selection_status = np.invert(self.signal_selection_status)
+
     def on_key_press(self, event):
         if event.key() == Qt.Key.Key_Left:
             # left arrow key
@@ -822,10 +906,8 @@ class Controller(QObject):
         elif event.key() == Qt.Key.Key_Right:
             # right arrow key
             self.next_roi()
-        # elif event.key() == Qt.Key.Key_Up:
-        #     # Call your function for up arrow key
-        # elif event.key() == Qt.Key.Key_Down:
-        #     # Call your function for down arrow key
+        elif event.key() == Qt.Key.Key_Return and self.signal_selection_status:
+            self.cut_selection()
 
     def closeEvent(self, event):
         retval = self.gui.exit_dialog()

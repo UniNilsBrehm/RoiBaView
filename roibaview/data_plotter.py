@@ -48,14 +48,17 @@ class DataPlotter:
             if meta_data is not None:
                 color = meta_data[cc]['color']
                 lw = meta_data[cc]['lw']
+                plot_name = f'data_{meta_data[cc]["name"]}'
             else:
                 color = '#000000'  # black
                 lw = 1
+                plot_name = f'data_{cc}'
             # Create new  plot item
             plot_data_item = pg.PlotDataItem(
                 t, y,
                 pen=pg.mkPen(color=color, width=lw),
-                name=f'data_{cc}',
+                # name=f'data_{cc}',
+                name=plot_name,
                 skipFiniteCheck=True,
                 tip=None,
             )
@@ -75,22 +78,22 @@ class DataPlotter:
                 if meta_data is not None:
                     color = meta_data[cc]['color']
                     lw = meta_data[cc]['lw']
+                    plot_name = f'global_{meta_data[cc]["name"]}'
                 else:
                     color = '#000000'  # black
                     lw = 1
+                    plot_name = f'global_{cc}'
+
                 # Create new  plot item
-                try:
-                    plot_data_item = pg.PlotDataItem(
-                        t, y,
-                        pen=pg.mkPen(color=color, width=lw),
-                        name=f'global_{cc}',
-                        skipFiniteCheck=True,
-                        tip=None,
-                    )
-                except TypeError:
-                    from IPython import embed
-                    embed()
-                    exit()
+                plot_data_item = pg.PlotDataItem(
+                    t, y,
+                    pen=pg.mkPen(color=color, width=lw),
+                    # name=f'global_{cc}',
+                    name=plot_name,
+                    skipFiniteCheck=True,
+                    tip=None,
+                )
+
                 # Add plot item to the plot widget
                 self.master_plot.addItem(plot_data_item)
                 cc += 1
