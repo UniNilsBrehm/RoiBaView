@@ -62,7 +62,7 @@ class DataPlotter:
                 skipFiniteCheck=True,
                 tip=None,
             )
-
+            # plot_data_item.setDownsampling(auto=True, method='peak')
             # Add plot item to the plot widget
             self.master_plot.addItem(plot_data_item)
             cc += 1
@@ -92,8 +92,11 @@ class DataPlotter:
                     name=plot_name,
                     skipFiniteCheck=True,
                     tip=None,
+                    # autoDownsample=True,
+                    # clipToView=True
                 )
-
+                # plot_data_item.setClipToView(True)
+                # plot_data_item.setDownsampling(auto=True)
                 # Add plot item to the plot widget
                 self.master_plot.addItem(plot_data_item)
                 cc += 1

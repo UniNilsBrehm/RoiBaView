@@ -8,6 +8,7 @@ dependencies:
   - pip
   - pip:
     - tifffile
+    - tifftools 
     - h5py
     - PyQt6
     - pyqtgraph
