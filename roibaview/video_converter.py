@@ -2,6 +2,7 @@ from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog, QLabel, QCheckBox,\
     QComboBox, QApplication, QDoubleSpinBox
 from IPython import embed
+from roibaview.gui import SimpleInputDialog
 import ffmpy
 import os
 import subprocess
@@ -212,8 +213,23 @@ class VideoConverter(QMainWindow):
         cap.release()
 
     def rescale_video(self):
+        size_dialog = SimpleInputDialog('Video Size', 'Video Size (widthxheight): ')
+        if size_dialog.exec() == size_dialog.DialogCode.Accepted:
+            video_size = size_dialog.get_input()
+        else:
+            return None
+        video_size = video_size.split('x')
+        if len(video_size) == 2:
+            print(f'New Video Size: {video_size[0]} x {video_size[1]} pixel')
+        else:
+            print('Input incorrect!')
+            return None
+
         self._define_ffmpeg_settings()
-        output_file = os.path.split(self.input_file)[0] + f'/rescaled.{self.input_file[-3:]}'
+        file_dir_name = os.path.split(self.input_file)
+        output_file = file_dir_name[0] + f'/{file_dir_name[1][:-4]}_rescaled.{file_dir_name[1][-3:]}'
+        print(f'Store to: {output_file}')
+
         self.get_supress_state()
         if self.supress_terminal_output:
             global_settings = self.ffmpeg_global_opt['supress']
@@ -223,7 +239,8 @@ class VideoConverter(QMainWindow):
             executable=self.ffmpeg_dir,
             global_options=global_settings,
             inputs={self.input_file: None},
-            outputs={output_file: ['-vf', 'scale=640:480']}
+            # outputs={output_file: ['-vf', 'scale=640:480']}
+            outputs={output_file: ['-c:v', 'libx264', '-preset', self.preset, '-crf', str(self.crf_value), '-vf', f'scale={video_size[0]}:{video_size[1]}']}
         )
         ff.run()
 

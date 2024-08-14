@@ -62,11 +62,21 @@ class DataHandler(QObject):
         data_check = pd.read_csv(file_dir, decimal=self.csv_decimal, sep=self.csv_sep, index_col=None, nrows=1, header=None)
         if data_check.iloc[0, :].dtype == 'O':
             # There are headers
-            headers = data_check.iloc[0, :].to_numpy()
             data_file = pd.read_csv(file_dir, decimal=self.csv_decimal, sep=self.csv_sep, index_col=None)
+
+            # Remove Index Column if there is one
+            if 'Unnamed: 0' in data_file.keys():
+                data_file.drop(columns='Unnamed: 0', inplace=True)
+            headers = np.array(data_file.keys())
+            # headers = data_check.iloc[0, :].to_numpy()
+
         else:
             data_file = pd.read_csv(file_dir, decimal=self.csv_decimal, sep=self.csv_sep, index_col=None, header=None)
-            # headers = list(np.arange(0, data_file.shape[1], 1).astype(str))
+
+            # Remove Index Column if there is one
+            if 'Unnamed: 0' in data_file.keys():
+                data_file.drop(columns='Unnamed: 0', inplace=True)
+
             headers = np.arange(0, data_file.shape[1], 1)
 
         # This needs to be converted to a numpy matrix
@@ -75,6 +85,7 @@ class DataHandler(QObject):
         # Check dimensions (must match hdf5 style)
         if data.ndim == 1:
             data = np.atleast_2d(data)
+
         # Open the temp hdf5 file and store data set there
         check = self.add_new_data_set(
             data_set_type, data_name, data,
@@ -113,7 +124,7 @@ class DataHandler(QObject):
                 f[data_set_type][new_name] = f[data_set_type][data_set_name]
                 del f[data_set_type][data_set_name]
 
-    def add_new_data_set(self, data_set_type, data_set_name, data, sampling_rate, time_offset, y_offset, header=''):
+    def add_new_data_set(self, data_set_type, data_set_name, data, sampling_rate, time_offset, y_offset, header):
         # Open the temp hdf5 file and store data set there
         already_exists = False
         with h5py.File(self.temp_file_name, 'r+') as f:
