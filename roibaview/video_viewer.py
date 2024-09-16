@@ -1,13 +1,49 @@
-
-# import os
 import cv2
+import zipfile
 import tifffile
+from PyQt6 import QtGui
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QUrl
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QPushButton, QFileDialog
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QPushButton, QFileDialog, QGraphicsItemGroup
+import pyqtgraph as pg
 from pyqtgraph import ImageView
 from roibaview.gui import SimpleInputDialog
-import numpy as np
+from roifile import ImagejRoi
 from IPython import embed
+import numpy as np
+
+
+class ClickableScatterPlotItem(pg.ScatterPlotItem):
+    HoverEventSignal = pyqtSignal()
+
+    def __init__(self, *args, roi_index=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.roi_index = roi_index  # Store the ROI index for identification
+        self.default_brush = self.opts['brush']  # Save the default brush color
+        self.hover_brush = pg.mkBrush(255, 255, 0)  # Yellow for hover
+        self.clicked_brush = pg.mkBrush(255, 0, 0)  # Red for click
+        self.is_hovered = False
+
+    def hoverEvent(self, ev):
+        if ev.isExit():
+            # Restore the default color when the mouse leaves the ROI
+            self.setBrush(self.default_brush)
+            self.is_hovered = False
+        elif ev.isEnter():
+            # Change to hover color when the mouse enters the ROI
+            self.setBrush(self.hover_brush)
+            self.is_hovered = True
+            self.HoverEventSignal.emit()
+
+    def mouseClickEvent(self, ev):
+        if ev.button() == Qt.MouseButton.LeftButton:  # Only handle left button clicks
+            if not self.is_hovered:
+                # Change to clicked color when the ROI is clicked
+                self.setBrush(self.clicked_brush)
+                print(f"Clicked on ROI {self.roi_index + 1}")
+            else:
+                # If it's already hovered, restore the default color
+                self.setBrush(self.default_brush)
+                self.is_hovered = False
 
 
 class VideoViewer(QMainWindow):
@@ -91,6 +127,10 @@ class VideoViewer(QMainWindow):
         self.connect_video_to_data_trace_button.clicked.connect(self.connect_to_data_trace)
         self.control_button_layout.addWidget(self.connect_video_to_data_trace_button)
 
+        self.load_roi_button = QPushButton("Load ROIs", self)
+        self.load_roi_button.clicked.connect(self.open_roi_file_dialog)
+        self.control_button_layout.addWidget(self.load_roi_button)
+
         # Slider
         self.frame_slider = QSlider(Qt.Orientation.Horizontal, self)
         # self.frame_slider.setTickPosition(QSlider.TickPosition.TicksBothSides)
@@ -113,8 +153,69 @@ class VideoViewer(QMainWindow):
         self.set_button_state(True)
         self.roi_circle = None
 
+        self.rois = None
+
         # Initialize video variables
         self._reset_video_viewer()
+
+    def open_roi_file_dialog(self):
+        """Open a file dialog to select and load ROI files."""
+        roi_file, _ = QFileDialog.getOpenFileName(
+            self, "Select ROI File", "", "ROI Files (*.roi *.zip)"
+        )
+        if roi_file:
+            self.rois = self.load_rois(roi_file)
+
+    def load_rois(self, roi_zip_path):
+        """Load ROIs from an ImageJ ROI zip file."""
+        rois = []
+        with zipfile.ZipFile(roi_zip_path, 'r') as zf:
+            for filename in zf.namelist():
+                if filename.endswith('.roi'):
+                    with zf.open(filename) as roi_file:
+                        # Read the ROI data as bytes
+                        roi_data = roi_file.read()
+                        # Create an ROI object from bytes
+                        roi = ImagejRoi.frombytes(roi_data)
+                        rois.append(roi)
+        return rois
+
+    def overlay_rois(self, roi_color, font_size):
+        """Overlay ROIs and their labels on the image."""
+        for index, roi in enumerate(self.rois):
+            # Get ROI coordinates
+            coordinates = np.array(roi.coordinates())
+            if len(coordinates) == 0:
+                continue
+
+            # Draw ROI as a scatter plot and make it clickable and hoverable
+            rois_line_plot = pg.PlotDataItem(coordinates[:, 0], coordinates[:, 1], pen=pg.mkPen(255, 255, 255, width=2))
+            self.image_view.addItem(rois_line_plot)
+
+            scatter = ClickableScatterPlotItem(pos=coordinates, pen=None, brush=pg.mkBrush(roi_color), size=5,
+                                               roi_index=index)
+            self.image_view.addItem(scatter)
+
+
+
+        for index, roi in enumerate(self.rois):
+            # Get ROI coordinates
+            coordinates = np.array(roi.coordinates())
+            if len(coordinates) == 0:
+                continue
+            # Add a label next to the ROI
+            label_text = f"{index + 1}"  # Example: "ROI 1", "ROI 2", etc.
+            label_position = np.median(coordinates, axis=0)
+            text_item = pg.TextItem(text=label_text, color=(255, 255, 255))
+
+            # Set the font size
+            font = QtGui.QFont()
+            font.setPointSize(font_size)
+            text_item.setFont(font)
+
+            # Position the label with a slight offset
+            text_item.setPos(label_position[0] - 5, label_position[1] - 5)
+            self.image_view.addItem(text_item)
 
     def _reset_video_viewer(self):
         self.image_view.clear()
@@ -291,23 +392,23 @@ class VideoViewer(QMainWindow):
             self.FrameChanged.emit()
             if self.is_tiff:
                 self.video_frame = self.captured_video.pages.get(self.current_frame).asarray()
-                # if self.roi_circle is not None:
-                #     self.video_frame = cv2.circle(self.video_frame, self.roi_circle, radius=60, color=(255, 0, 0), thickness=2)
             else:
                 # Capture the next frame
                 self.captured_video.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame - 1)
                 ret, self.video_frame = self.captured_video.read()
                 if not ret:
                     return
-                # if self.roi_circle is not None:
-                #     self.video_frame = cv2.circle(self.video_frame, self.roi_circle, radius=60, color=(255, 0, 0), thickness=2)
 
             current_time_point = (self.current_frame/self.fps) + self.time_offset
             self.current_frame_label.setText(f"Current Frame / Time: {self.current_frame} / {current_time_point:.2f}")
-
             self.image_view.setImage(self.rotate_frame(self.video_frame), autoLevels=False)
-            # self.TimePoint.emit(self.current_frame/self.fps)
+            # Draw the ROIs on the new frame
             self.TimePoint.emit(current_time_point)
+
+            if self.rois is not None:
+                # Overlay ROIs in the desired color
+                self.overlay_rois(roi_color=(0, 255, 0), font_size=16)
+                self.rois = None
 
     def connect_to_data_trace(self):
         if not self.connected_to_data_trace:
