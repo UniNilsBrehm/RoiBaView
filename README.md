@@ -37,6 +37,33 @@ Then run "main.py":<br>
 python main.py
 ```
 
+## Short cut for starting the app in Windows
+You can use the "Start_RoiBaView.bat" file to quickly start the app. For this just double click the batch file. 
+However, for it to work, you have to adjust some lines in the batch file.
+
+Under REM Path to the Python script directory change:
+
+For Anaconda:
+
+<i> SET ANACONDA_PATH=*Your\Path\To\Anaconda\anaconda3* </i>
+
+For Miniconda
+
+<i> SET ANACONDA_PATH=*Your\Path\To\Anaconda\miniconda3* </i>
+
+If you don't know the path you can find it by opening the anaconda prompt and type:
+```shell
+where conda
+```
+
+Under REM Name of the Anaconda environment change to your anaconda environment:
+SET ENV_NAME=*NameOfYourEnvironment*
+
+Under REM Path to the Python script directory change to the directory of ROIBAVIEW:
+
+SET SCRIPT_DIR=*Your\Path\To\RoiBaView*
+
+
 ## Import Data
 You can import data from .csv files (comma separated).<br>
 <i>File --> Import csv file ...</i><br>
