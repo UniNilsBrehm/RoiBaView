@@ -68,6 +68,8 @@ class MainWindow(QMainWindow):
         self.data_sets_list_context_menu = QMenu()
         self.data_sets_list_rename = self.data_sets_list_context_menu.addAction("rename")
         self.data_sets_list_delete = self.data_sets_list_context_menu.addAction("delete")
+        self.data_sets_list_delete_col = self.data_sets_list_context_menu.addAction("delete column")
+
         self.data_sets_list_export = self.data_sets_list_context_menu.addAction("export")
 
         self.data_sets_list_context_menu.addSeparator()
@@ -183,6 +185,7 @@ class MainWindow(QMainWindow):
         self.tools_menu_video_converter = self.tools_menu.addAction('Convert Video File')
         # self.tools_menu_registration = self.tools_menu.addAction('Registration')
         self.tools_menu_convert_csv = self.tools_menu.addAction('Convert csv files')
+        self.tools_menu_csv_remove_column = self.tools_menu.addAction('Remove Column from csv file')
         self.tools_menu_convert_ventral_root = self.tools_menu.addAction('Convert Ventral Root Files')
         self.tools_menu_create_stimulus = self.tools_menu.addAction('Create Stimulus From File')
         self.tools_menu_detect_vr = self.tools_menu.addAction('Ventral Root Event Detection')

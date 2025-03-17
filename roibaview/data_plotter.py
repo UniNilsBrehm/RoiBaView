@@ -70,7 +70,7 @@ class DataPlotter:
     def update_global(self, time_axis, data, meta_data=None):
         # self.clear_global_data()
         self.clear_plot_data(name='global')
-        cc = 0
+        cc = 0  # index of data set (0 = the first global data set, and so on)
         for t, y_data in zip(time_axis, data):
             # Each column in global data set can be a trace
             for y in y_data.T:
@@ -99,4 +99,4 @@ class DataPlotter:
                 # plot_data_item.setDownsampling(auto=True)
                 # Add plot item to the plot widget
                 self.master_plot.addItem(plot_data_item)
-                cc += 1
+            cc += 1

@@ -110,6 +110,27 @@ class DataHandler(QObject):
             else:
                 return False
 
+    def delete_column(self, data_set_type, data_set_name, col_nr):
+        with h5py.File(self.temp_file_name, 'r+') as f:
+            if data_set_name in f[data_set_type]:
+                # Convert to a NumPy array
+                dset = f[data_set_type][data_set_name]
+                data = dset[:]
+
+                # Remove the column
+                try:
+                    modified_data = np.delete(data, col_nr, axis=1)
+
+                    # Resize the dataset to match new shape
+                    dset.resize(modified_data.shape)
+
+                    # Overwrite dataset with new data
+                    dset[...] = modified_data  # Overwrite without deleting the dataset
+                    self.roi_count = modified_data.shape[1]
+
+                except IndexError:
+                    return None
+
     def delete_data_set(self, data_set_type, data_set_name):
         with h5py.File(self.temp_file_name, 'r+') as f:
             if data_set_name in f[data_set_type]:
@@ -135,7 +156,7 @@ class DataHandler(QObject):
                 already_exists = True
 
             # CREATE NEW DATASET
-            new_entry = f[data_set_type].create_dataset(data_set_name, data=data)
+            new_entry = f[data_set_type].create_dataset(data_set_name, data=data, chunks=True)
             if data_set_type == 'global_data_sets':
                 header_name = 'header_names'
             else:

@@ -8,6 +8,7 @@ from PyQt6.QtCore import pyqtSignal, QObject, Qt
 from PyQt6.QtGui import QPen, QBrush, QColor
 import pyqtgraph as pg
 from roibaview.data_handler import DataHandler, TransformData
+from roibaview.csv_handling import CSVHandler
 from roibaview.gui import BrowseFileDialog, InputDialog, SimpleInputDialog, ChangeStyle
 from roibaview.data_plotter import DataPlotter, PyqtgraphSettings
 from roibaview.peak_detection import PeakDetection
@@ -129,6 +130,8 @@ class Controller(QObject):
         # Context Menu
         self.gui.data_sets_list_rename.triggered.connect(self.rename_data_set)
         self.gui.data_sets_list_delete.triggered.connect(self.delete_data_set)
+        self.gui.data_sets_list_delete_col.triggered.connect(self.delete_column)
+
         self.gui.data_sets_list_export.triggered.connect(self.export_to_csv)
         self.gui.data_sets_list_time_offset.triggered.connect(self.time_offset)
         self.gui.data_sets_list_y_offset.triggered.connect(self.y_offset)
@@ -152,7 +155,10 @@ class Controller(QObject):
         # Video Viewer
         self.gui.tools_menu_open_video_viewer.triggered.connect(self.open_video_viewer)
         self.video_viewer.TimePoint.connect(self.connect_video_to_plot)
+        # Convert csv file
         self.gui.tools_menu_convert_csv.triggered.connect(self.convert_csv_files)
+        # Remove Column from csv file
+        self.gui.tools_menu_csv_remove_column.triggered.connect(self.csv_remove_column)
         # Video Converter
         self.gui.tools_menu_video_converter.triggered.connect(self.open_video_converter)
         # Convert Ventral Root
@@ -167,6 +173,30 @@ class Controller(QObject):
         # KeyBoard Bindings
         self.gui.key_pressed.connect(self.on_key_press)
         self.data_plotter.master_plot.scene().sigMouseClicked.connect(self.on_mouse_click)
+
+    def delete_column(self):
+        if len(self.selected_data_sets) > 1:
+            dlg = QMessageBox()
+            dlg.setWindowTitle('ERROR')
+            dlg.setText(f'You cannot rename multiple data sets at once!')
+            button = dlg.exec()
+            if button == QMessageBox.StandardButton.Ok:
+                return None
+        if len(self.selected_data_sets) == 0:
+            return None
+
+        # Get Column Nr
+        dialog = SimpleInputDialog(title='Settings', text='Please enter some stuff: ')
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            received = dialog.get_input()
+        else:
+            return None
+
+        col_nr = int(received)
+        data_set_name, data_set_type, data_set_item = self.get_selected_data_sets(0)
+
+        # Remove the column
+        self.data_handler.delete_column(data_set_type, data_set_name, col_nr)
 
     def draw_selection(self, status='start'):
         if status == 'exit' and self.cut_out_region is not None:
@@ -401,6 +431,11 @@ class Controller(QObject):
         data_set_name, data_set_type, data_set_item = self.get_selected_data_sets(0)
         self.data_handler.add_meta_data(data_set_type=data_set_type, data_set_name=data_set_name, metadata_dict={'color': color})
         self.update_plots(change_global=True)
+
+    def csv_remove_column(self):
+        csv_handler = CSVHandler(self.gui)
+        csv_handler.remove_column_from_csv_file()
+        print('YUHUUUU')
 
     def convert_csv_files(self):
         file_dir = self.file_browser.browse_file('csv file, (*.csv *.txt)')
@@ -706,7 +741,8 @@ class Controller(QObject):
                         data=result,
                         sampling_rate=meta_data['sampling_rate'],
                         time_offset=meta_data['time_offset'],
-                        y_offset=meta_data['y_offset']
+                        y_offset=meta_data['y_offset'],
+                        header=f'{data_set_name}_{mode}'
                     )
                     # Add new data set to the list in the GUI
                     if check:
@@ -746,7 +782,12 @@ class Controller(QObject):
                 # print(f'{data_set_name}: fr={fr} Hz (shape={r.shape[0]}) samples')
                 time_offset = meta_data['time_offset']
                 y_offset = meta_data['y_offset']
-                time_points.append(self.data_transformer.compute_time_axis(r.shape[0], fr) + time_offset)
+                try:
+                    time_points.append(self.data_transformer.compute_time_axis(r.shape[0], fr) + time_offset)
+                except AttributeError:
+                    from IPython import embed
+                    embed()
+                    exit()
 
                 roi_data.append(r + y_offset)
                 meta_data_list.append(meta_data)
